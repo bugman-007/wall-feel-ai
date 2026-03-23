@@ -397,7 +397,7 @@ export default function Home() {
 
               <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  <strong>Note:</strong> This is a mock checkout. In production, you'll be redirected to Shopify for secure payment processing.
+                  <strong>Note:</strong> This is a mock checkout. In production, you&apos;ll be redirected to Shopify for secure payment processing.
                 </p>
               </div>
             </div>
