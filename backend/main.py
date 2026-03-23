@@ -195,34 +195,34 @@ async def segment_walls(request: SegmentRequest):
         # Simulate processing time (non-blocking)
         await asyncio.sleep(2)  # SAM typically takes 10-15 seconds
 
-    # Generate mock wall masks
-    # These represent typical walls in a room photo
-    mock_masks = [
-        {
-            "id": "wall-1",
-            "area": 0.28,
-            "bbox": [50, 100, 350, 450],  # Left wall
-            "segmentation": [
-                [50, 100], [400, 100], [400, 550], [50, 550]
-            ]
-        },
-        {
-            "id": "wall-2",
-            "area": 0.32,
-            "bbox": [420, 80, 380, 480],  # Back wall
-            "segmentation": [
-                [420, 80], [800, 80], [800, 560], [420, 560]
-            ]
-        },
-        {
-            "id": "wall-3",
-            "area": 0.22,
-            "bbox": [820, 120, 300, 420],  # Right wall
-            "segmentation": [
-                [820, 120], [1120, 120], [1120, 540], [820, 540]
-            ]
-        }
-    ]
+        # Generate mock wall masks
+        # These represent typical walls in a room photo
+        mock_masks = [
+            {
+                "id": "wall-1",
+                "area": 0.28,
+                "bbox": [50, 100, 350, 450],  # Left wall
+                "segmentation": [
+                    [50, 100], [400, 100], [400, 550], [50, 550]
+                ]
+            },
+            {
+                "id": "wall-2",
+                "area": 0.32,
+                "bbox": [420, 80, 380, 480],  # Back wall
+                "segmentation": [
+                    [420, 80], [800, 80], [800, 560], [420, 560]
+                ]
+            },
+            {
+                "id": "wall-3",
+                "area": 0.22,
+                "bbox": [820, 120, 300, 420],  # Right wall
+                "segmentation": [
+                    [820, 120], [1120, 120], [1120, 540], [820, 540]
+                ]
+            }
+        ]
 
         logger.info(f"Generated {len(mock_masks)} mock wall masks")
 
