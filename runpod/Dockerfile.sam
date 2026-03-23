@@ -1,0 +1,27 @@
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    runpod \
+    segment-anything \
+    opencv-python-headless \
+    pillow \
+    requests \
+    numpy
+
+# Download SAM model weights
+RUN wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+# Copy handler
+COPY sam_handler.py .
+
+# Run handler
+CMD ["python", "sam_handler.py"]

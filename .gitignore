@@ -1,0 +1,126 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js
+.next/
+out/
+
+# Production
+/build
+
+# Misc
+*.pem
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# Documentation (keep source, ignore builds)
+# docs/_build/
+
+# Deployment
+.vercel
+.railway
+
+# R2 / Cloud storage (don't commit uploads)
+uploads/
+*.uploaded
+
+# AI Models (too large for git)
+*.pth
+*.safetensors
+*.ckpt
+models/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+secrets/
+*.key
+*.pem
+credentials.json
+
+# Documentation - Exclude ALL planning/guide files from GitHub
+# Strategy: Block all .md files first, then whitelist only essential ones
+
+# Block all .md files in root
+/*.md
+
+# Whitelist ONLY essential documentation
+!README.md
+!GET-STARTED.md
+!HOW-TO-RUN.md
+!STATUS.md
+
+# Keep standard docs if they exist
+!LICENSE.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+
+# Keep README files in subdirectories (like runpod/README.md)
+!*/README.md

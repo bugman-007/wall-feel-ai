@@ -1,0 +1,68 @@
+{
+  "designs": [
+    {
+      "id": "floral-001",
+      "name": "Vintage Floral",
+      "category": "floral",
+      "thumbnail_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=2000&h=2000&fit=crop",
+      "description": "Classic floral pattern with vintage charm"
+    },
+    {
+      "id": "geometric-001",
+      "name": "Modern Geometric",
+      "category": "geometric",
+      "thumbnail_url": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=2000&h=2000&fit=crop",
+      "description": "Contemporary geometric design"
+    },
+    {
+      "id": "botanical-001",
+      "name": "Tropical Leaves",
+      "category": "botanical",
+      "thumbnail_url": "https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?w=2000&h=2000&fit=crop",
+      "description": "Lush tropical leaf pattern"
+    },
+    {
+      "id": "abstract-001",
+      "name": "Abstract Waves",
+      "category": "abstract",
+      "thumbnail_url": "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=2000&h=2000&fit=crop",
+      "description": "Flowing abstract wave design"
+    },
+    {
+      "id": "minimalist-001",
+      "name": "Minimalist Lines",
+      "category": "minimalist",
+      "thumbnail_url": "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?w=2000&h=2000&fit=crop",
+      "description": "Clean minimalist line pattern"
+    },
+    {
+      "id": "floral-002",
+      "name": "Cherry Blossom",
+      "category": "floral",
+      "thumbnail_url": "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=2000&h=2000&fit=crop",
+      "description": "Delicate cherry blossom design"
+    },
+    {
+      "id": "texture-001",
+      "name": "Marble Texture",
+      "category": "texture",
+      "thumbnail_url": "https://images.unsplash.com/photo-1615799998603-7c6270a45196?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1615799998603-7c6270a45196?w=2000&h=2000&fit=crop",
+      "description": "Elegant marble texture pattern"
+    },
+    {
+      "id": "vintage-001",
+      "name": "Vintage Damask",
+      "category": "vintage",
+      "thumbnail_url": "https://images.unsplash.com/photo-1604871000636-074fa5117945?w=400&h=400&fit=crop",
+      "full_url": "https://images.unsplash.com/photo-1604871000636-074fa5117945?w=2000&h=2000&fit=crop",
+      "description": "Classic damask pattern"
+    }
+  ]
+}

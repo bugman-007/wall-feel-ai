@@ -1,0 +1,8 @@
+runpod
+segment-anything
+opencv-python-headless
+pillow
+requests
+numpy
+torch
+torchvision
