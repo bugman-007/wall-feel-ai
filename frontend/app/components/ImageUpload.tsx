@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 
@@ -14,6 +14,15 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [fileName, setFileName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview)
+      }
+    }
+  }, [preview])
 
   const uploadToBackend = async (file: File, previewUrl: string) => {
     setUploading(true)
@@ -79,6 +88,11 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       const file = acceptedFiles[0]
       setFileName(file.name)
 
+      // Revoke old preview URL to prevent memory leak
+      if (preview) {
+        URL.revokeObjectURL(preview)
+      }
+
       // Create preview URL
       const previewUrl = URL.createObjectURL(file)
       setPreview(previewUrl)
@@ -86,7 +100,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       // Upload to backend
       uploadToBackend(file, previewUrl)
     }
-  }, [])
+  }, [preview])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

@@ -1,15 +1,25 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 import os
 import json
 import uuid
+import asyncio
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
 from typing import List, Dict, Any
+from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Wallfeel API",
@@ -29,8 +39,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add security middleware
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+
 class SegmentRequest(BaseModel):
     image_url: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg"
+            }
+        }
 
 class WallMask(BaseModel):
     id: str
@@ -165,14 +186,14 @@ async def segment_walls(request: SegmentRequest):
             "mock": true
         }
     """
-    # TODO: Replace with real SAM API call to RunPod
-    # For now, return mock wall masks for development
+    try:
+        logger.info(f"Wall detection requested for image: {request.image_url}")
 
-    import time
-    import random
+        # TODO: Replace with real SAM API call to RunPod
+        # For now, return mock wall masks for development
 
-    # Simulate processing time
-    time.sleep(2)  # SAM typically takes 10-15 seconds
+        # Simulate processing time (non-blocking)
+        await asyncio.sleep(2)  # SAM typically takes 10-15 seconds
 
     # Generate mock wall masks
     # These represent typical walls in a room photo
@@ -203,29 +224,62 @@ async def segment_walls(request: SegmentRequest):
         }
     ]
 
-    return {
-        "success": True,
-        "masks": mock_masks,
-        "processing_time": 2.0,
-        "mock": True,
-        "message": "Using mock wall detection. Real SAM integration pending."
-    }
+        logger.info(f"Generated {len(mock_masks)} mock wall masks")
+
+        return {
+            "success": True,
+            "masks": mock_masks,
+            "processing_time": 2.0,
+            "mock": True,
+            "message": "Using mock wall detection. Real SAM integration pending."
+        }
+
+    except Exception as e:
+        logger.error(f"Wall detection error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Wall detection failed: {str(e)}"
+        )
 
 class ApplyWallpaperRequest(BaseModel):
     image_url: str
     wall_mask_id: str
     wallpaper_id: str
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
+                "wall_mask_id": "wall-1",
+                "wallpaper_id": "floral-001"
+            }
+        }
+
 class CreateOrderRequest(BaseModel):
     preview_image_url: str
     original_image_url: str
     wallpaper_id: str
     wallpaper_name: str
-    width: float
-    height: float
-    material: str
-    price: float
-    customer_email: str
+    width: float = Field(gt=0, le=10, description="Wall width in meters")
+    height: float = Field(gt=0, le=10, description="Wall height in meters")
+    material: str = Field(pattern="^(peel_stick|traditional|premium)$")
+    price: float = Field(gt=0, description="Total price in GBP")
+    customer_email: EmailStr
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "preview_image_url": "https://...",
+                "original_image_url": "https://...",
+                "wallpaper_id": "floral-001",
+                "wallpaper_name": "Botanical Garden",
+                "width": 3.2,
+                "height": 2.4,
+                "material": "peel_stick",
+                "price": 799.20,
+                "customer_email": "customer@example.com"
+            }
+        }
 
 @app.post("/api/apply-wallpaper")
 async def apply_wallpaper(request: ApplyWallpaperRequest):
@@ -250,26 +304,36 @@ async def apply_wallpaper(request: ApplyWallpaperRequest):
             "mock": true
         }
     """
-    # TODO: Replace with real SDXL API call to RunPod
-    # For now, return mock preview URL
+    try:
+        logger.info(f"Preview generation requested for wall: {request.wall_mask_id}, wallpaper: {request.wallpaper_id}")
 
-    import time
+        # TODO: Replace with real SDXL API call to RunPod
+        # For now, return mock preview URL
 
-    # Simulate SDXL processing time (typically 20-30 seconds)
-    time.sleep(3)  # Shortened for development
+        # Simulate SDXL processing time (non-blocking)
+        await asyncio.sleep(3)  # SDXL typically takes 20-30 seconds
 
-    # Return a placeholder preview image
-    # In production, this would be the SDXL-generated image
-    mock_preview_url = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop"
+        # Return a placeholder preview image
+        # In production, this would be the SDXL-generated image
+        mock_preview_url = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop"
 
-    return {
-        "success": True,
-        "preview_url": mock_preview_url,
-        "original_url": request.image_url,
-        "processing_time": 3.0,
-        "mock": True,
-        "message": "Using mock preview generation. Real SDXL integration pending."
-    }
+        logger.info("Mock preview generated successfully")
+
+        return {
+            "success": True,
+            "preview_url": mock_preview_url,
+            "original_url": request.image_url,
+            "processing_time": 3.0,
+            "mock": True,
+            "message": "Using mock preview generation. Real SDXL integration pending."
+        }
+
+    except Exception as e:
+        logger.error(f"Preview generation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Preview generation failed: {str(e)}"
+        )
 
 @app.post("/api/shopify/create-order")
 async def create_shopify_order(request: CreateOrderRequest):
@@ -290,34 +354,59 @@ async def create_shopify_order(request: CreateOrderRequest):
             "mock": true
         }
     """
-    # TODO: Replace with real Shopify API call
-    # For now, return mock order data
+    try:
+        logger.info(f"Order creation requested for {request.customer_email}")
 
-    import time
-    import uuid
+        # Validate email format
+        if not request.customer_email or '@' not in request.customer_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Valid email address is required"
+            )
 
-    # Simulate API call
-    time.sleep(1)
+        # Validate dimensions
+        if request.width <= 0 or request.height <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid dimensions"
+            )
 
-    # Generate mock order ID
-    order_id = f"WF-{uuid.uuid4().hex[:8].upper()}"
+        # TODO: Replace with real Shopify API call
+        # For now, return mock order data
 
-    # Mock checkout URL
-    mock_checkout_url = f"https://wallfeel.myshopify.com/checkout/{order_id}"
+        # Simulate API call (non-blocking)
+        await asyncio.sleep(1)
 
-    return {
-        "success": True,
-        "order_id": order_id,
-        "checkout_url": mock_checkout_url,
-        "order_details": {
-            "dimensions": f"{request.width}m × {request.height}m",
-            "material": request.material,
-            "price": request.price,
-            "wallpaper": request.wallpaper_name
-        },
-        "mock": True,
-        "message": "Using mock order creation. Real Shopify integration pending."
-    }
+        # Generate mock order ID
+        order_id = f"WF-{uuid.uuid4().hex[:8].upper()}"
+
+        # Mock checkout URL
+        mock_checkout_url = f"https://wallfeel.myshopify.com/checkout/{order_id}"
+
+        logger.info(f"Mock order created: {order_id}")
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "checkout_url": mock_checkout_url,
+            "order_details": {
+                "dimensions": f"{request.width}m × {request.height}m",
+                "material": request.material,
+                "price": request.price,
+                "wallpaper": request.wallpaper_name
+            },
+            "mock": True,
+            "message": "Using mock order creation. Real Shopify integration pending."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Order creation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Order creation failed: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,9 +1,13 @@
 import os
 import boto3
+import logging
 from botocore.client import Config
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class R2Client:
     """
@@ -42,6 +46,8 @@ class R2Client:
             Public URL of the uploaded file
         """
         try:
+            logger.info(f"Uploading file to R2: {filename}")
+
             # Upload to R2
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
@@ -55,9 +61,14 @@ class R2Client:
             # Note: This requires R2 bucket to have public access enabled
             public_url = f"https://pub-{self.account_id}.r2.dev/{filename}"
 
+            logger.info(f"File uploaded successfully: {public_url}")
             return public_url
 
+        except ClientError as e:
+            logger.error(f"R2 upload failed: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to upload to R2: {str(e)}")
         except Exception as e:
+            logger.error(f"Unexpected error during upload: {str(e)}", exc_info=True)
             raise Exception(f"Failed to upload to R2: {str(e)}")
 
     def delete_file(self, filename: str) -> bool:

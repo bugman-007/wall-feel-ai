@@ -30,7 +30,11 @@ export default function WallSelector({
 
   useEffect(() => {
     if (imageLoaded && canvasRef.current && imageRef.current) {
-      drawMasks()
+      // Use requestAnimationFrame for smoother rendering
+      const frameId = requestAnimationFrame(() => {
+        drawMasks()
+      })
+      return () => cancelAnimationFrame(frameId)
     }
   }, [imageLoaded, masks, selectedMaskId, hoveredMaskId])
 
@@ -116,7 +120,7 @@ export default function WallSelector({
     })
   }
 
-  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     const image = imageRef.current
     if (!canvas || !image) return
@@ -134,9 +138,9 @@ export default function WallSelector({
         return
       }
     }
-  }
+  }, [masks, onWallSelect])
 
-  const handleCanvasMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     const image = imageRef.current
     if (!canvas || !image) return
@@ -151,16 +155,16 @@ export default function WallSelector({
     let foundMask = false
     for (const mask of masks) {
       if (isPointInPolygon([x, y], mask.segmentation)) {
-        setHoveredMaskId(mask.id)
+        setHoveredMaskId(prev => prev !== mask.id ? mask.id : prev)
         foundMask = true
         break
       }
     }
 
     if (!foundMask) {
-      setHoveredMaskId(null)
+      setHoveredMaskId(prev => prev !== null ? null : prev)
     }
-  }
+  }, [masks])
 
   const isPointInPolygon = (point: number[], polygon: number[][]): boolean => {
     const [x, y] = point
