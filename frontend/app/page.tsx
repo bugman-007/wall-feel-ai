@@ -17,15 +17,6 @@ interface WallpaperDesign {
   description: string
 }
 
-interface WallMask {
-  id: string
-  area: number
-  bbox: number[]
-  segmentation: number[][]
-  description?: string
-  confidence?: number
-}
-
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<{
     file: File
@@ -33,69 +24,22 @@ export default function Home() {
     uploadedUrl?: string
   } | null>(null)
   const [selectedWallpaper, setSelectedWallpaper] = useState<WallpaperDesign | null>(null)
-  const [wallMask, setWallMask] = useState<WallMask | null>(null)
-  const [isDetecting, setIsDetecting] = useState(false)
-  const [detectionError, setDetectionError] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
 
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
-    setWallMask(null)
-    setDetectionError(null)
+    setGenerateError(null)
   }
 
   const handleWallpaperSelect = (design: WallpaperDesign) => {
     setSelectedWallpaper(design)
   }
 
-  // AI-powered wall detection - simplified flow
-  const handleDetectWall = async () => {
-    if (!selectedImage?.uploadedUrl) {
-      setDetectionError('Please upload an image first')
-      return
-    }
-
-    setIsDetecting(true)
-    setDetectionError(null)
-
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/ai-detect-wall`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image_url: selectedImage.uploadedUrl,
-          wallpaper_id: selectedWallpaper?.id || null
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Wall detection failed')
-      }
-
-      const data = await response.json()
-
-      if (data.success && data.wall) {
-        setWallMask(data.wall)
-      } else {
-        throw new Error('No wall detected')
-      }
-
-    } catch (err: any) {
-      setDetectionError(err.message || 'Failed to detect wall. Please try again.')
-      console.error('Detection error:', err)
-    } finally {
-      setIsDetecting(false)
-    }
-  }
-
   const [previewData, setPreviewData] = useState<{
     originalUrl: string
     previewUrl: string
   } | null>(null)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState<string | null>(null)
   const [showPricing, setShowPricing] = useState(false)
   const [orderData, setOrderData] = useState<{
     width: number
@@ -104,22 +48,25 @@ export default function Home() {
     price: number
   } | null>(null)
 
+  // Direct AI preview generation - no wall detection needed!
   const handleGeneratePreview = async () => {
-    if (!wallMask || !selectedWallpaper || !selectedImage?.uploadedUrl) return
+    if (!selectedWallpaper || !selectedImage?.uploadedUrl) {
+      setGenerateError('Please upload an image and select a wallpaper first')
+      return
+    }
 
     setIsGenerating(true)
     setGenerateError(null)
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/apply-wallpaper`, {
+      const response = await fetch(`${apiUrl}/api/ai-generate-preview`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
-          wall_mask_id: wallMask.id,
           wallpaper_id: selectedWallpaper.id
         })
       })
@@ -154,7 +101,7 @@ export default function Home() {
             Visualize wallpaper designs on your walls with AI
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Powered by OpenAI Vision
+            Upload → Choose → Preview (Powered by OpenAI/Gemini)
           </p>
         </div>
 
@@ -179,103 +126,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Detect Wall Button */}
-        {selectedImage && !wallMask && (
-          <div className="flex justify-center mb-12">
-            <button
-              onClick={handleDetectWall}
-              disabled={isDetecting}
-              className={`
-                px-8 py-4 rounded-lg font-semibold text-white text-lg
-                transition-all duration-200 transform
-                ${isDetecting
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700 hover:scale-105 active:scale-95'
-                }
-              `}
-            >
-              {isDetecting ? (
-                <span className="flex items-center space-x-2">
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span>Detecting Wall with AI...</span>
-                </span>
-              ) : (
-                'Detect Wall with AI'
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Detection Error */}
-        {detectionError && (
-          <div className="max-w-2xl mx-auto mb-12">
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                  {detectionError}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Wall Detected Display */}
-        {wallMask && selectedImage && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-              3. Wall Detected!
-            </h2>
-            <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <div className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 mb-4">
-                <img
-                  src={selectedImage.preview}
-                  alt="Room with detected wall"
-                  className="w-full h-auto"
-                />
-                {/* Overlay showing detected wall area */}
-                <div
-                  className="absolute inset-0 bg-blue-500 bg-opacity-30 pointer-events-none"
-                  style={{
-                    clipPath: `polygon(${wallMask.segmentation.map(([x, y]) => `${(x / 1000) * 100}%,${(y / 1000) * 100}%`).join(' ')})`
-                  }}
-                />
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {wallMask.description || 'Main wall detected'}
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Confidence: {((wallMask.confidence || 0) * 100).toFixed(0)}% |
-                  Area: {(wallMask.area * 100).toFixed(1)}% of image
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Generate Preview Button */}
-        {wallMask && selectedWallpaper && !previewData && (
+        {/* Step 3: Generate Preview Button */}
+        {selectedImage && selectedWallpaper && !previewData && (
           <div className="flex justify-center mb-12">
             <button
               onClick={handleGeneratePreview}
@@ -339,7 +191,7 @@ export default function Home() {
         {previewData && !showPricing && (
           <div className="mb-12">
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-              4. Your Preview
+              3. Your Preview
             </h2>
             <PreviewDisplay
               originalUrl={previewData.originalUrl}
@@ -361,7 +213,7 @@ export default function Home() {
         {showPricing && !orderData && (
           <div className="mb-12">
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-              5. Measurements & Pricing
+              4. Measurements & Pricing
             </h2>
             <MeasurementsForm
               onProceedToCheckout={(data) => {
@@ -375,7 +227,7 @@ export default function Home() {
         {orderData && (
           <div className="mb-12">
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-              6. Checkout
+              5. Checkout
             </h2>
             <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <div className="mb-6">
@@ -426,7 +278,7 @@ export default function Home() {
         )}
 
         {/* Progress Summary */}
-        {(selectedImage || wallMask || selectedWallpaper) && (
+        {(selectedImage || selectedWallpaper || previewData) && (
           <div className="max-w-2xl mx-auto mb-12">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -451,25 +303,6 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex items-center space-x-3">
-                  {wallMask ? (
-                    <>
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className="text-gray-700 dark:text-gray-300">
-                        Wall detected by AI
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      <span className="text-gray-400">Wall not detected yet</span>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center space-x-3">
                   {selectedWallpaper ? (
                     <>
                       <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -485,6 +318,23 @@ export default function Home() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                       <span className="text-gray-400">No wallpaper selected</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center space-x-3">
+                  {previewData ? (
+                    <>
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-gray-700 dark:text-gray-300">Preview generated</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span className="text-gray-400">Preview not generated yet</span>
                     </>
                   )}
                 </div>
