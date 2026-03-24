@@ -48,12 +48,13 @@ class R2Client:
         try:
             logger.info(f"Uploading file to R2: {filename}")
 
-            # Upload to R2
+            # Upload to R2 with public-read ACL for AI service access
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=file_data,
-                ContentType=content_type
+                ContentType=content_type,
+                ACL='public-read'  # Required for Stability AI to access mask images
             )
 
             # Generate public URL
