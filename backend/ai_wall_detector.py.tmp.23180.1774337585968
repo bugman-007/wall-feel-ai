@@ -324,19 +324,18 @@ def generate_preview_with_openai(
     api_key: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using OpenAI GPT-4 Vision + Python compositing
-
-    Approach:
-    1. GPT-4 Vision analyzes room + wallpaper, detects wall boundaries
-    2. Python composites wallpaper onto detected wall using PIL/Pillow
-    3. Returns realistic composite
+    Generate wallpaper preview using OpenAI GPT-4 Vision
+    1. Analyze room photo to detect wall boundaries
+    2. Composite wallpaper onto the detected wall programmatically
     """
     try:
         import openai
         import base64
         import httpx
         import json
-        from PIL import Image
+        from PIL import Image, ImageFilter
+        import numpy as np
+        import cv2
         from io import BytesIO
 
         key = api_key or os.getenv("OPENAI_API_KEY")
@@ -346,95 +345,106 @@ def generate_preview_with_openai(
 
         client = openai.OpenAI(api_key=key)
 
-        # Download images
-        logger.info(f"Downloading room image...")
+        # Download room image
+        logger.info(f"Downloading room image from: {image_url[:80]}...")
         room_response = httpx.get(image_url, timeout=30)
         room_response.raise_for_status()
         room_image = Image.open(BytesIO(room_response.content)).convert('RGB')
         room_base64 = base64.b64encode(room_response.content).decode('utf-8')
-        logger.info(f"Room image: {room_image.size}")
+        logger.info(f"Room image loaded: {room_image.size}")
 
-        logger.info(f"Downloading wallpaper image...")
+        # Download wallpaper image
+        logger.info(f"Downloading wallpaper image from: {wallpaper_url[:80]}...")
         wallpaper_response = httpx.get(wallpaper_url, timeout=30)
         wallpaper_response.raise_for_status()
         wallpaper_image = Image.open(BytesIO(wallpaper_response.content)).convert('RGB')
         wallpaper_base64 = base64.b64encode(wallpaper_response.content).decode('utf-8')
-        logger.info(f"Wallpaper image: {wallpaper_image.size}")
+        logger.info(f"Wallpaper image loaded: {wallpaper_image.size}")
 
-        # Step 1: GPT-4 Vision detects wall boundaries
-        logger.info("Detecting wall with GPT-4 Vision...")
-        analysis = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": """
-Look at this room photo and wallpaper pattern.
+        # Ask OpenAI to detect the main wall
+        logger.info("Asking OpenAI to detect wall boundaries...")
+        prompt = """
+Analyze this room photo and identify the MAIN wall that would be best for wallpaper.
 
-Identify the MAIN wall for wallpaper application and return its bounding box as percentages (0-100).
-
-Return ONLY JSON:
+Return ONLY a JSON object with the wall's bounding box as percentages (0-100) of image dimensions:
 {
     "wall_detected": true,
-    "bbox": {
-        "x1_percent": 10,
-        "y1_percent": 15,
-        "x2_percent": 70,
-        "y2_percent": 75
+    "bounding_box": {
+        "x_percent": 10,
+        "y_percent": 20,
+        "width_percent": 60,
+        "height_percent": 50
     },
-    "perspective": "front",
-    "description": "Main wall behind bed"
+    "wall_description": "Main wall facing camera",
+    "confidence": 0.9,
+    "perspective": "front" | "left" | "right" | "angled"
 }
 
-x1,y1 = top-left corner, x2,y2 = bottom-right corner
-Perspective: "front", "left", "right", or "angled"
-"""},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{room_base64}"}},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{wallpaper_base64}"}}
-                ]
-            }],
-            max_tokens=300,
+The bounding box should cover the entire wall surface, excluding baseboards and crown molding.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{room_base64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=500,
         )
 
-        analysis_text = analysis.choices[0].message.content.strip()
-        logger.info(f"Wall analysis: {analysis_text[:200]}...")
+        result_text = response.choices[0].message.content.strip()
+        logger.info(f"OpenAI response: {result_text[:200]}...")
 
-        # Parse analysis
         import re
-        json_match = re.search(r'\{[\s\S]*\}', analysis_text)
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
         if not json_match:
-            logger.error("No JSON in response")
+            logger.error("No JSON found in OpenAI response")
             return None
 
         result = json.loads(json_match.group())
 
         if not result.get("wall_detected"):
-            logger.warning("No wall detected")
+            logger.warning(f"OpenAI did not detect wall: {result.get('reason', 'unknown')}")
             return None
 
-        bbox = result.get("bbox", {})
-        x1_pct = bbox.get("x1_percent", 10)
-        y1_pct = bbox.get("y1_percent", 15)
-        x2_pct = bbox.get("x2_percent", 70)
-        y2_pct = bbox.get("y2_percent", 75)
+        # Get wall boundaries
+        bbox = result.get("bounding_box", {})
+        x_pct = bbox.get("x_percent", 10)
+        y_pct = bbox.get("y_percent", 20)
+        w_pct = bbox.get("width_percent", 60)
+        h_pct = bbox.get("height_percent", 50)
         perspective = result.get("perspective", "front")
-        description = result.get("description", "Main wall")
 
-        logger.info(f"Wall: ({x1_pct}%,{y1_pct}%) to ({x2_pct}%,{y2_pct}%), perspective={perspective}")
+        logger.info(f"Wall detected: x={x_pct}%, y={y_pct}%, w={w_pct}%, h={h_pct}%, perspective={perspective}")
 
-        # Step 2: Composite wallpaper onto wall
-        preview = composite_images(room_image, wallpaper_image,
-                                   x1_pct/100, y1_pct/100, x2_pct/100, y2_pct/100,
-                                   perspective)
+        # Composite the wallpaper onto the detected wall
+        logger.info("Compositing wallpaper onto wall...")
+        preview_image = composite_wallpaper_on_wall(
+            room_image, wallpaper_image,
+            x_pct/100, y_pct/100, w_pct/100, h_pct/100,
+            perspective
+        )
 
-        # Step 3: Upload to R2
+        # Save composite to bytes
         output = BytesIO()
-        preview.save(output, format='JPEG', quality=85)
+        preview_image.save(output, format='JPEG', quality=90)
         output.seek(0)
 
+        # Upload composite to R2
         from r2_client import r2_client
         import uuid
         filename = f"previews/{uuid.uuid4()}.jpg"
+        logger.info(f"Uploading preview to R2: {filename}")
 
         public_url = r2_client.upload_file(
             file_data=output.getvalue(),
@@ -447,85 +457,110 @@ Perspective: "front", "left", "right", or "angled"
         return {
             "success": True,
             "preview_url": public_url,
-            "description": description,
-            "provider": "openai-gpt4v"
+            "description": f"Wallpaper applied to {result.get('wall_description', 'main wall')}",
+            "provider": "openai",
+            "wall_info": {
+                "description": result.get("wall_description", ""),
+                "confidence": result.get("confidence", 0.8),
+                "perspective": perspective
+            }
         }
 
     except Exception as e:
-        logger.error(f"OpenAI error: {str(e)}", exc_info=True)
+        logger.error(f"OpenAI preview generation error: {str(e)}", exc_info=True)
         return None
 
 
-def composite_images(room: Image.Image, wallpaper: Image.Image,
-                     x1: float, y1: float, x2: float, y2: float,
-                     perspective: str = "front") -> Image.Image:
+def composite_wallpaper_on_wall(
+    room_image: Image.Image,
+    wallpaper_image: Image.Image,
+    x_pct: float, y_pct: float, w_pct: float, h_pct: float,
+    perspective: str = "front"
+) -> Image.Image:
     """
-    Composite wallpaper onto room image at specified wall region
+    Composite wallpaper image onto the detected wall area of room image
 
     Args:
-        room: Room photo (PIL Image)
-        wallpaper: Wallpaper pattern (PIL Image)
-        x1, y1, x2, y2: Wall boundaries as percentages (0-1)
-        perspective: "front", "left", "right", or "angled"
+        room_image: Original room photo
+        wallpaper_image: Wallpaper pattern
+        x_pct, y_pct, w_pct, h_pct: Wall boundaries as percentages (0-1)
+        perspective: Wall perspective ("front", "left", "right", "angled")
 
     Returns:
         Composite image with wallpaper applied
     """
-    from PIL import Image, ImageEnhance
+    import cv2
     import numpy as np
+    from PIL import Image
+
+    # Convert to OpenCV format
+    room_cv = cv2.cvtColor(np.array(room_image), cv2.COLOR_RGB2BGR)
+    wallpaper_cv = cv2.cvtColor(np.array(wallpaper_image), cv2.COLOR_RGB2BGR)
 
     # Get dimensions
-    room_w, room_h = room.size
-    wall_x1 = int(x1 * room_w)
-    wall_y1 = int(y1 * room_h)
-    wall_x2 = int(x2 * room_w)
-    wall_y2 = int(y2 * room_h)
-    wall_w = wall_x2 - wall_x1
-    wall_h = wall_y2 - wall_y1
+    h, w = room_cv.shape[:2]
 
-    if wall_w <= 0 or wall_h <= 0:
-        logger.warning("Invalid wall bounds, using defaults")
-        wall_x1, wall_y1 = int(room_w * 0.15), int(room_h * 0.2)
-        wall_x2, wall_y2 = int(room_w * 0.85), int(room_h * 0.75)
-        wall_w = wall_x2 - wall_x1
-        wall_h = wall_y2 - wall_y1
+    # Calculate wall region in pixels
+    x1 = int(x_pct * w)
+    y1 = int(y_pct * h)
+    x2 = int((x_pct + w_pct) * w)
+    y2 = int((y_pct + h_pct) * h)
+
+    # Ensure valid coordinates
+    x1, x2 = max(0, x1), min(w, x2)
+    y1, y2 = max(0, y1), min(h, y2)
+
+    if x2 <= x1 or y2 <= y1:
+        logger.warning("Invalid wall coordinates, using center wall")
+        x1, y1 = int(w * 0.2), int(h * 0.2)
+        x2, y2 = int(w * 0.8), int(h * 0.7)
+
+    wall_w = x2 - x1
+    wall_h = y2 - y1
 
     # Resize wallpaper to fit wall
-    wp = wallpaper.resize((wall_w, wall_h), Image.Resampling.LANCZOS)
+    wallpaper_resized = cv2.resize(wallpaper_cv, (wall_w, wall_h))
 
-    # Apply perspective transform
+    # Apply perspective transform if needed
     if perspective == "left":
-        # Skew left
-        offset = int(wall_h * 0.1)
-        wp = wp.transform((wall_w, wall_h), Image.Transform.PERSPECTIVE,
-                         (1, 0, 0, 0, 1, 0, 0, offset/wall_h), Image.Resampling.BICUBIC)
+        # Slight left perspective
+        pts1 = np.float32([[0, 0], [wall_w, 0], [wall_w, wall_h], [0, wall_h]])
+        pts2 = np.float32([[0, 0], [wall_w * 0.9, 0], [wall_w, wall_h], [wall_w * 0.1, wall_h]])
+        matrix = cv2.getPerspectiveTransform(pts1, pts2)
+        wallpaper_resized = cv2.warpPerspective(wallpaper_resized, matrix, (wall_w, wall_h))
     elif perspective == "right":
-        # Skew right
-        offset = int(wall_h * 0.1)
-        wp = wp.transform((wall_w, wall_h), Image.Transform.PERSPECTIVE,
-                         (1, 0, 0, offset/wall_w, 1, 0, 0, 0), Image.Resampling.BICUBIC)
+        # Slight right perspective
+        pts1 = np.float32([[0, 0], [wall_w, 0], [wall_w, wall_h], [0, wall_h]])
+        pts2 = np.float32([[wall_w * 0.1, 0], [wall_w, 0], [wall_w * 0.9, wall_h], [0, wall_h]])
+        matrix = cv2.getPerspectiveTransform(pts1, pts2)
+        wallpaper_resized = cv2.warpPerspective(wallpaper_resized, matrix, (wall_w, wall_h))
 
-    # Adjust brightness/contrast to match room lighting
-    enhancer = ImageEnhance.Brightness(wp)
-    wp = enhancer.enhance(0.85)  # Slightly darker
-    enhancer = ImageEnhance.Contrast(wp)
-    wp = enhancer.enhance(0.9)  # Slightly less contrast
+    # Apply lighting/shadow to match room
+    # Create a gradient overlay to simulate lighting
+    overlay = np.zeros((wall_h, wall_w, 3), dtype=np.uint8)
 
-    # Create result as copy of room
-    result = room.copy()
+    # Top-to-bottom gradient (ceiling shadow)
+    for i in range(wall_h):
+        brightness = 1.0 - (i / wall_h) * 0.3  # Darker at bottom
+        overlay[i, :] = [int(50 * (1 - brightness)), int(50 * (1 - brightness)), int(50 * (1 - brightness))]
 
-    # Paste wallpaper onto wall with blending
-    wall_region = result.crop((wall_x1, wall_y1, wall_x2, wall_y2))
+    # Apply overlay with transparency
+    wallpaper_with_shadow = cv2.addWeighted(wallpaper_resized, 0.85, overlay, 0.15, 0)
 
-    # Simple alpha blend (85% wallpaper, 15% original for texture)
-    blended = Image.blend(wp, wall_region, 0.15)
+    # Blend with slight transparency to keep some wall texture
+    room_region = room_cv[y1:y2, x1:x2].copy()
+    blended = cv2.addWeighted(wallpaper_with_shadow, 0.9, room_region, 0.1, 0)
 
-    # Paste back
-    result.paste(blended, (wall_x1, wall_y1))
+    # Add border to simulate wall edges
+    cv2.rectangle(blended, (0, 0), (wall_w - 1, wall_h - 1), (0, 0, 0), 1)
 
-    logger.info(f"Composite created: wall region ({wall_x1},{wall_y1}) to ({wall_x2},{wall_y2})")
+    # Place back into room image
+    result = room_cv.copy()
+    result[y1:y2, x1:x2] = blended
 
-    return result
+    # Convert back to PIL format
+    result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(result_rgb)
 
 
 def generate_preview_with_gemini(
