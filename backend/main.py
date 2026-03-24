@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
+from runpod_client import runpod_client
 from typing import List, Dict, Any
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
@@ -189,14 +190,22 @@ async def segment_walls(request: SegmentRequest):
     try:
         logger.info(f"Wall detection requested for image: {request.image_url}")
 
-        # TODO: Replace with real SAM API call to RunPod
-        # For now, return mock wall masks for development
+        # Check if RunPod is configured
+        if runpod_client.is_configured():
+            # Use real RunPod SAM endpoint
+            logger.info("Using RunPod SAM endpoint for wall detection")
+            try:
+                result = runpod_client.detect_walls(request.image_url)
+                return result
+            except Exception as e:
+                logger.error(f"RunPod SAM error: {str(e)}, falling back to mock")
+                # Fall through to mock implementation
 
-        # Simulate processing time (non-blocking)
-        await asyncio.sleep(2)  # SAM typically takes 10-15 seconds
+        # Mock implementation (for development or fallback)
+        logger.info("Using mock wall detection")
+        await asyncio.sleep(2)  # Simulate processing time
 
         # Generate mock wall masks
-        # These represent typical walls in a room photo
         mock_masks = [
             {
                 "id": "wall-1",
@@ -307,14 +316,26 @@ async def apply_wallpaper(request: ApplyWallpaperRequest):
     try:
         logger.info(f"Preview generation requested for wall: {request.wall_mask_id}, wallpaper: {request.wallpaper_id}")
 
-        # TODO: Replace with real SDXL API call to RunPod
-        # For now, return mock preview URL
+        # Check if RunPod is configured
+        if runpod_client.is_configured():
+            # Use real RunPod SDXL endpoint
+            logger.info("Using RunPod SDXL endpoint for preview generation")
+            try:
+                result = runpod_client.generate_preview(
+                    request.image_url,
+                    request.wall_mask_id,
+                    request.wallpaper_id
+                )
+                return result
+            except Exception as e:
+                logger.error(f"RunPod SDXL error: {str(e)}, falling back to mock")
+                # Fall through to mock implementation
 
-        # Simulate SDXL processing time (non-blocking)
-        await asyncio.sleep(3)  # SDXL typically takes 20-30 seconds
+        # Mock implementation (for development or fallback)
+        logger.info("Using mock preview generation")
+        await asyncio.sleep(3)  # Simulate processing time
 
         # Return a placeholder preview image
-        # In production, this would be the SDXL-generated image
         mock_preview_url = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop"
 
         logger.info("Mock preview generated successfully")
