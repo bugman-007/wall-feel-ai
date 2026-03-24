@@ -1,5 +1,5 @@
 """
-AI Wall Detector using Gemini 1.5 Flash + Stability AI SDXL
+AI Wall Detector using Gemini 2.0 Flash + Stability AI SDXL
 For automatic wall detection and wallpaper inpainting
 """
 
@@ -25,7 +25,7 @@ def encode_image_to_base64(image_url: str) -> str:
 
 def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Use Google Gemini 1.5 Flash to detect the main wall in a room photo
+    Use Google Gemini 2.0 Flash to detect the main wall in a room photo
 
     Args:
         image_url: URL of the room image
@@ -43,7 +43,7 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
             return None
 
         genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
 
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
@@ -124,7 +124,7 @@ Rules:
                         "description": result.get("wall_description", "Main wall")
                     }],
                     "provider": "gemini",
-                    "model": "gemini-1.5-flash"
+                    "model": "gemini-2.0-flash"
                 }
             else:
                 logger.warning(f"Gemini did not detect wall: {result.get('reason', 'Unknown')}")
