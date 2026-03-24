@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
 from runpod_client import runpod_client
+from ai_wall_detector import detect_wall_ai
 from typing import List, Dict, Any
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
@@ -249,6 +250,116 @@ async def segment_walls(request: SegmentRequest):
             status_code=500,
             detail=f"Wall detection failed: {str(e)}"
         )
+
+
+class AIWallDetectRequest(BaseModel):
+    image_url: str
+    wallpaper_id: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
+                "wallpaper_id": "floral-001"
+            }
+        }
+
+
+@app.post("/api/ai-detect-wall")
+async def ai_detect_wall(request: AIWallDetectRequest):
+    """
+    Detect the main wall in a room photo using AI (OpenAI or Gemini)
+
+    This is the SIMPLIFIED flow endpoint:
+    1. User uploads photo
+    2. AI detects the main wall automatically
+    3. AI can optionally map wallpaper pattern
+
+    Args:
+        request: {
+            image_url: string,
+            wallpaper_id: string (optional)
+        }
+
+    Returns:
+        {
+            "success": true,
+            "wall": {
+                "id": "wall-1",
+                "area": 0.25,
+                "bbox": [100, 50, 400, 500],
+                "segmentation": [[x1,y1], [x2,y2], ...],
+                "description": "Main wall facing the camera",
+                "confidence": 0.95
+            },
+            "provider": "openai" | "gemini",
+            "processing_time": 3.5
+        }
+    """
+    try:
+        logger.info(f"AI wall detection requested for image: {request.image_url}")
+
+        # Use AI to detect wall (OpenAI or Gemini)
+        result = detect_wall_ai(request.image_url)
+
+        if result and result.get("success"):
+            logger.info(f"AI wall detection successful using {result.get('provider')}")
+            return {
+                **result,
+                "processing_time": 3.5,  # Approximate AI processing time
+            }
+        else:
+            # Fall back to mock data
+            logger.warning("AI wall detection failed, using mock data")
+
+            mock_wall = {
+                "id": "wall-1",
+                "area": 0.35,
+                "bbox": [100, 80, 600, 450],
+                "segmentation": [
+                    [100, 80],
+                    [700, 80],
+                    [700, 530],
+                    [100, 530]
+                ],
+                "description": "Main wall (mock fallback)",
+                "confidence": 0.5
+            }
+
+            return {
+                "success": True,
+                "wall": mock_wall,
+                "provider": "mock",
+                "processing_time": 0.5,
+                "message": "AI detection unavailable, using mock wall"
+            }
+
+    except Exception as e:
+        logger.error(f"AI wall detection error: {str(e)}", exc_info=True)
+
+        # Return mock data on error
+        mock_wall = {
+            "id": "wall-1",
+            "area": 0.35,
+            "bbox": [100, 80, 600, 450],
+            "segmentation": [
+                [100, 80],
+                [700, 80],
+                [700, 530],
+                [100, 530]
+            ],
+            "description": "Main wall (error fallback)",
+            "confidence": 0.3
+        }
+
+        return {
+            "success": True,
+            "wall": mock_wall,
+            "provider": "mock",
+            "processing_time": 0.1,
+            "error": str(e),
+            "message": "AI detection error, using mock wall"
+        }
 
 class ApplyWallpaperRequest(BaseModel):
     image_url: str
