@@ -1,0 +1,114 @@
+"""
+Stability AI API client for SDXL inpainting
+"""
+import os
+import requests
+import logging
+from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class StabilityClient:
+    """Client for Stability AI SDXL inpainting API"""
+
+    def __init__(self):
+        self.api_key = os.getenv("STABILITY_API_KEY")
+        self.base_url = "https://api.stability.ai/v2beta"
+
+        if not self.api_key:
+            logger.warning("STABILITY_API_KEY not configured - Stability AI features disabled")
+
+    def is_configured(self) -> bool:
+        """Check if Stability AI is properly configured"""
+        return bool(self.api_key)
+
+    def generate_inpainting(
+        self,
+        image_url: str,
+        mask_url: str,
+        prompt: str,
+        strength: float = 0.7
+    ) -> Dict[str, Any]:
+        """
+        Generate inpainted image using SDXL
+
+        Args:
+            image_url: URL of the original image
+            mask_url: URL of the mask image (white = edit, black = keep)
+            prompt: Text prompt describing the edit
+            strength: Inpainting strength (0.0-1.0)
+
+        Returns:
+            {
+                "success": true,
+                "image_url": "https://...",
+                "provider": "stability-sdxl"
+            }
+        """
+        if not self.api_key:
+            raise ValueError("Stability AI API key not configured")
+
+        logger.info(f"Calling Stability AI SDXL inpainting endpoint")
+
+        # Download images
+        import httpx
+        try:
+            image_response = httpx.get(image_url, timeout=30)
+            image_response.raise_for_status()
+            image_data = image_response.content
+
+            mask_response = httpx.get(mask_url, timeout=30)
+            mask_response.raise_for_status()
+            mask_data = mask_response.content
+        except Exception as e:
+            logger.error(f"Failed to download images: {str(e)}")
+            raise ValueError(f"Failed to download images: {str(e)}")
+
+        # Call Stability AI API
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "image/*"
+        }
+
+        files = {
+            "init_image": ("image.jpg", image_data, "image/jpeg"),
+            "mask_image": ("mask.png", mask_data, "image/png")
+        }
+
+        data = {
+            "text_prompt": prompt,
+            "strength": strength,
+            "steps": 30,
+            "cfg_scale": 7.0,
+            "clip_guidance_preset": "FAST_BLUE"
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/stable-diffusion/image-editing",
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=60
+            )
+            response.raise_for_status()
+
+            # Return image as base64
+            import base64
+            image_base64 = base64.b64encode(response.content).decode('utf-8')
+
+            return {
+                "success": True,
+                "image_base64": image_base64,
+                "provider": "stability-sdxl",
+                "content_type": "image/png"
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Stability AI API error: {str(e)}")
+            raise Exception(f"Stability AI API error: {str(e)}")
+
+
+# Singleton instance
+stability_client = StabilityClient()

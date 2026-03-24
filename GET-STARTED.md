@@ -27,15 +27,22 @@ This will:
 - Install all Python dependencies
 - Create environment file templates
 
-### 2. Configure R2 Storage
+### 2. Configure Environment Variables
 
-Edit `backend/.env` and add your Cloudflare R2 credentials:
+Edit `backend/.env` and add your credentials:
 
 ```env
+# R2 Storage (required)
 R2_ACCOUNT_ID=your_account_id
 R2_ACCESS_KEY_ID=your_access_key
 R2_SECRET_ACCESS_KEY=your_secret_key
 R2_BUCKET_NAME=wallfeel-uploads
+
+# Gemini 1.5 Flash (required - for wall detection)
+GEMINI_API_KEY=your_gemini_api_key
+
+# Stability AI SDXL (required - for preview generation)
+STABILITY_API_KEY=your_stability_api_key
 ```
 
 **Get R2 credentials:**
@@ -44,7 +51,18 @@ R2_BUCKET_NAME=wallfeel-uploads
 3. Create bucket named `wallfeel-uploads`
 4. Go to Manage R2 API Tokens
 5. Create API token with "Edit" permissions
-6. Copy Account ID, Access Key ID, and Secret Access Key
+
+**Get Gemini API key:**
+1. Go to https://aistudio.google.com/apikey
+2. Sign in with Google account
+3. Click "Create API Key"
+4. Copy the key
+
+**Get Stability AI API key:**
+1. Go to https://platform.stability.ai/account/keys
+2. Sign up or log in
+3. Create a new API key
+4. Copy the key
 
 ### 3. Start Backend
 
@@ -77,27 +95,25 @@ You should see:
 
 1. Open http://localhost:3000 in your browser
 2. Upload a room photo (any image works)
-3. Click "Detect Walls with AI" (takes 2 seconds)
-4. Click on a wall to select it
-5. Scroll down and select a wallpaper design
-6. Click "Generate Preview with AI" (takes 3 seconds)
-7. Drag the slider to compare before/after
-8. Click "Continue to Pricing"
-9. Enter dimensions (e.g., 3.2m × 2.4m)
-10. Select a material (e.g., Peel & Stick)
-11. Click "Proceed to Checkout"
-12. Enter your email
-13. Click "Complete Order via Shopify"
+3. Scroll down and select a wallpaper design
+4. Click "Generate Preview with AI" (takes 5-10 seconds)
+5. Drag the slider to compare before/after
+6. Click "Continue to Pricing"
+7. Enter dimensions (e.g., 3.2m × 2.4m)
+8. Select a material (e.g., Peel & Stick)
+9. Click "Proceed to Checkout"
+10. Enter your email
+11. Click "Complete Order via Shopify"
 
 ✅ **Success!** You've completed the full user flow.
 
 ## What's Working
 
 - ✅ Image upload to cloud storage (R2)
-- ✅ AI wall detection (mock - 2 seconds)
-- ✅ Interactive wall selection
+- ✅ AI wall detection (Gemini 1.5 Flash)
+- ✅ AI preview generation (Stability AI SDXL)
+- ✅ Interactive wall selection (fallback)
 - ✅ Wallpaper catalog (8 designs)
-- ✅ AI preview generation (mock - 3 seconds)
 - ✅ Real pricing calculations
 - ✅ Checkout flow (mock)
 
@@ -143,17 +159,13 @@ Make sure:
    railway up
    ```
 
-3. **Deploy AI Handlers to RunPod:**
-   See `runpod/README.md` for instructions
+### AI Configuration
 
-### For Real AI Integration
+The AI integration is already implemented using:
+- **Gemini 1.5 Flash** for wall detection
+- **Stability AI SDXL** for wallpaper inpainting
 
-Replace mock implementations with real AI:
-1. Deploy SAM handler to RunPod (wall detection)
-2. Deploy SDXL handler to RunPod (preview generation)
-3. Update `backend/.env` with RunPod endpoint URLs
-
-See `runpod/README.md` for detailed instructions.
+Just add your API keys to `backend/.env` to enable real AI features.
 
 ## API Documentation
 
@@ -165,20 +177,20 @@ Once the backend is running, visit:
 
 - **Quick Start:** This file
 - **Detailed Setup:** README.md
-- **RunPod Deployment:** runpod/README.md
 - **Project Status:** STATUS.md
 
 ## Success Checklist
 
 - [ ] Setup script completed
 - [ ] R2 credentials added
+- [ ] Gemini API key added
+- [ ] Stability AI API key added
 - [ ] Backend running on port 8000
 - [ ] Frontend running on port 3000
 - [ ] Can upload images
-- [ ] Can detect walls
-- [ ] Can select walls
+- [ ] Can detect walls (Gemini)
+- [ ] Can generate preview (SDXL)
 - [ ] Can choose wallpaper
-- [ ] Can generate preview
 - [ ] Can calculate pricing
 - [ ] Can complete checkout
 

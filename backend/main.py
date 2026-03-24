@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
-from runpod_client import runpod_client
 from ai_wall_detector import detect_wall_ai, generate_wallpaper_preview_ai
 from typing import List, Dict, Any, Optional
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
@@ -199,18 +198,7 @@ async def segment_walls(request: SegmentRequest):
     try:
         logger.info(f"Wall detection requested for image: {request.image_url}")
 
-        # Check if RunPod is configured
-        if runpod_client.is_configured():
-            # Use real RunPod SAM endpoint
-            logger.info("Using RunPod SAM endpoint for wall detection")
-            try:
-                result = runpod_client.detect_walls(request.image_url)
-                return result
-            except Exception as e:
-                logger.error(f"RunPod SAM error: {str(e)}, falling back to mock")
-                # Fall through to mock implementation
-
-        # Mock implementation (for development or fallback)
+        # Mock implementation (for development)
         logger.info("Using mock wall detection")
         await asyncio.sleep(2)  # Simulate processing time
 
@@ -453,22 +441,7 @@ async def apply_wallpaper(request: ApplyWallpaperRequest):
     try:
         logger.info(f"Preview generation requested for wall: {request.wall_mask_id}, wallpaper: {request.wallpaper_id}")
 
-        # Check if RunPod is configured
-        if runpod_client.is_configured():
-            # Use real RunPod SDXL endpoint
-            logger.info("Using RunPod SDXL endpoint for preview generation")
-            try:
-                result = runpod_client.generate_preview(
-                    request.image_url,
-                    request.wall_mask_id,
-                    request.wallpaper_id
-                )
-                return result
-            except Exception as e:
-                logger.error(f"RunPod SDXL error: {str(e)}, falling back to mock")
-                # Fall through to mock implementation
-
-        # Mock implementation (for development or fallback)
+        # Mock implementation (for development)
         logger.info("Using mock preview generation")
         await asyncio.sleep(3)  # Simulate processing time
 
