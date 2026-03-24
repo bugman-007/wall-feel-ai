@@ -86,7 +86,7 @@ class StabilityClient:
 
         try:
             response = requests.post(
-                f"{self.base_url}/stable-diffusion/image-editing",
+                f"{self.base_url}/stable-image/edit",
                 headers=headers,
                 files=files,
                 data=data,
