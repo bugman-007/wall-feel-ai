@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
-import WallSelector from './components/WallSelector'
 import PreviewDisplay from './components/PreviewDisplay'
 import MeasurementsForm from './components/MeasurementsForm'
 import CheckoutButton from './components/CheckoutButton'
@@ -23,6 +22,8 @@ interface WallMask {
   area: number
   bbox: number[]
   segmentation: number[][]
+  description?: string
+  confidence?: number
 }
 
 export default function Home() {
@@ -32,15 +33,13 @@ export default function Home() {
     uploadedUrl?: string
   } | null>(null)
   const [selectedWallpaper, setSelectedWallpaper] = useState<WallpaperDesign | null>(null)
-  const [wallMasks, setWallMasks] = useState<WallMask[]>([])
-  const [selectedWallId, setSelectedWallId] = useState<string | null>(null)
+  const [wallMask, setWallMask] = useState<WallMask | null>(null)
   const [isDetecting, setIsDetecting] = useState(false)
   const [detectionError, setDetectionError] = useState<string | null>(null)
 
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
-    setWallMasks([])
-    setSelectedWallId(null)
+    setWallMask(null)
     setDetectionError(null)
   }
 
@@ -48,11 +47,8 @@ export default function Home() {
     setSelectedWallpaper(design)
   }
 
-  const handleWallSelect = (maskId: string) => {
-    setSelectedWallId(maskId)
-  }
-
-  const handleDetectWalls = async () => {
+  // AI-powered wall detection - simplified flow
+  const handleDetectWall = async () => {
     if (!selectedImage?.uploadedUrl) {
       setDetectionError('Please upload an image first')
       return
@@ -63,13 +59,14 @@ export default function Home() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/segment`, {
+      const response = await fetch(`${apiUrl}/api/ai-detect-wall`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          image_url: selectedImage.uploadedUrl
+          image_url: selectedImage.uploadedUrl,
+          wallpaper_id: selectedWallpaper?.id || null
         })
       })
 
@@ -78,10 +75,15 @@ export default function Home() {
       }
 
       const data = await response.json()
-      setWallMasks(data.masks || [])
+
+      if (data.success && data.wall) {
+        setWallMask(data.wall)
+      } else {
+        throw new Error('No wall detected')
+      }
 
     } catch (err: any) {
-      setDetectionError(err.message || 'Failed to detect walls. Please try again.')
+      setDetectionError(err.message || 'Failed to detect wall. Please try again.')
       console.error('Detection error:', err)
     } finally {
       setIsDetecting(false)
@@ -103,7 +105,7 @@ export default function Home() {
   } | null>(null)
 
   const handleGeneratePreview = async () => {
-    if (!selectedWallId || !selectedWallpaper || !selectedImage?.uploadedUrl) return
+    if (!wallMask || !selectedWallpaper || !selectedImage?.uploadedUrl) return
 
     setIsGenerating(true)
     setGenerateError(null)
@@ -117,7 +119,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
-          wall_mask_id: selectedWallId,
+          wall_mask_id: wallMask.id,
           wallpaper_id: selectedWallpaper.id
         })
       })
@@ -152,11 +154,11 @@ export default function Home() {
             Visualize wallpaper designs on your walls with AI
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            All 10 Steps Complete ✓ | MVP Ready for Testing
+            Powered by OpenAI Vision
           </p>
         </div>
 
-        {/* Upload Section */}
+        {/* Step 1: Upload Section */}
         <div className="mb-12">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             1. Upload Your Room Photo
@@ -164,11 +166,24 @@ export default function Home() {
           <ImageUpload onImageSelect={handleImageSelect} />
         </div>
 
-        {/* Detect Walls Button */}
-        {selectedImage && !wallMasks.length && (
+        {/* Step 2: Choose Wallpaper */}
+        {selectedImage && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+              2. Choose Your Wallpaper Design
+            </h2>
+            <WallpaperGrid
+              onWallpaperSelect={handleWallpaperSelect}
+              selectedId={selectedWallpaper?.id}
+            />
+          </div>
+        )}
+
+        {/* Step 3: Detect Wall Button */}
+        {selectedImage && !wallMask && (
           <div className="flex justify-center mb-12">
             <button
-              onClick={handleDetectWalls}
+              onClick={handleDetectWall}
               disabled={isDetecting}
               className={`
                 px-8 py-4 rounded-lg font-semibold text-white text-lg
@@ -200,10 +215,10 @@ export default function Home() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  <span>Detecting Walls...</span>
+                  <span>Detecting Wall with AI...</span>
                 </span>
               ) : (
-                'Detect Walls with AI'
+                'Detect Wall with AI'
               )}
             </button>
           </div>
@@ -225,36 +240,42 @@ export default function Home() {
           </div>
         )}
 
-        {/* Wall Selection */}
-        {wallMasks.length > 0 && selectedImage && (
+        {/* Wall Detected Display */}
+        {wallMask && selectedImage && (
           <div className="mb-12">
-            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-              2. Select a Wall
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              3. Wall Detected!
             </h2>
-            <WallSelector
-              imageUrl={selectedImage.preview}
-              masks={wallMasks}
-              onWallSelect={handleWallSelect}
-              selectedMaskId={selectedWallId}
-            />
+            <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <div className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 mb-4">
+                <img
+                  src={selectedImage.preview}
+                  alt="Room with detected wall"
+                  className="w-full h-auto"
+                />
+                {/* Overlay showing detected wall area */}
+                <div
+                  className="absolute inset-0 bg-blue-500 bg-opacity-30 pointer-events-none"
+                  style={{
+                    clipPath: `polygon(${wallMask.segmentation.map(([x, y]) => `${(x / 1000) * 100}%,${(y / 1000) * 100}%`).join(' ')})`
+                  }}
+                />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  {wallMask.description || 'Main wall detected'}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Confidence: {((wallMask.confidence || 0) * 100).toFixed(0)}% |
+                  Area: {(wallMask.area * 100).toFixed(1)}% of image
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Wallpaper Catalog Section */}
-        {selectedWallId && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-              3. Choose Your Wallpaper Design
-            </h2>
-            <WallpaperGrid
-              onWallpaperSelect={handleWallpaperSelect}
-              selectedId={selectedWallpaper?.id}
-            />
-          </div>
-        )}
-
-        {/* Generate Preview Button */}
-        {selectedWallId && selectedWallpaper && !previewData && (
+        {/* Step 4: Generate Preview Button */}
+        {wallMask && selectedWallpaper && !previewData && (
           <div className="flex justify-center mb-12">
             <button
               onClick={handleGeneratePreview}
@@ -405,7 +426,7 @@ export default function Home() {
         )}
 
         {/* Progress Summary */}
-        {(selectedImage || selectedWallId || selectedWallpaper) && (
+        {(selectedImage || wallMask || selectedWallpaper) && (
           <div className="max-w-2xl mx-auto mb-12">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -430,13 +451,13 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex items-center space-x-3">
-                  {wallMasks.length > 0 ? (
+                  {wallMask ? (
                     <>
                       <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span className="text-gray-700 dark:text-gray-300">
-                        {wallMasks.length} walls detected
+                        Wall detected by AI
                       </span>
                     </>
                   ) : (
@@ -444,26 +465,7 @@ export default function Home() {
                       <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                      <span className="text-gray-400">Walls not detected yet</span>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center space-x-3">
-                  {selectedWallId ? (
-                    <>
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className="text-gray-700 dark:text-gray-300">
-                        Wall selected
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      <span className="text-gray-400">No wall selected</span>
+                      <span className="text-gray-400">Wall not detected yet</span>
                     </>
                   )}
                 </div>
