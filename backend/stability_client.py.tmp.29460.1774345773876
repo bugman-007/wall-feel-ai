@@ -71,16 +71,14 @@ class StabilityClient:
             "Accept": "image/*"
         }
 
-        # Stability AI v2beta API expects specific field names
         files = {
-            "image": ("image.png", image_data, "image/png"),
-            "mask": ("mask.png", mask_data, "image/png"),
+            "init_image": ("image.jpg", image_data, "image/jpeg"),
+            "mask_image": ("mask.png", mask_data, "image/png")
         }
 
         data = {
             "prompt": prompt,
-            "mode": "mask",  # Required when using a mask
-            "output_format": "png"  # or jpeg/webp
+            "strength": strength
         }
 
         try:
