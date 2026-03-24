@@ -324,18 +324,18 @@ def generate_preview_with_openai(
     api_key: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using OpenAI GPT-4 Vision
-    1. Analyze room photo to detect wall boundaries
-    2. Composite wallpaper onto the detected wall programmatically
+    Generate wallpaper preview using OpenAI GPT-4 Vision + DALL-E 3
+
+    Like chatgpt.com:
+    1. GPT-4 Vision analyzes both images, detects wall, describes the composite
+    2. DALL-E 3 generates the final image using the description + room image
     """
     try:
         import openai
         import base64
         import httpx
         import json
-        from PIL import Image, ImageFilter
-        import numpy as np
-        import cv2
+        from PIL import Image
         from io import BytesIO
 
         key = api_key or os.getenv("OPENAI_API_KEY")
@@ -345,222 +345,84 @@ def generate_preview_with_openai(
 
         client = openai.OpenAI(api_key=key)
 
-        # Download room image
-        logger.info(f"Downloading room image from: {image_url[:80]}...")
+        # Download images
+        logger.info(f"Downloading room image...")
         room_response = httpx.get(image_url, timeout=30)
         room_response.raise_for_status()
-        room_image = Image.open(BytesIO(room_response.content)).convert('RGB')
         room_base64 = base64.b64encode(room_response.content).decode('utf-8')
-        logger.info(f"Room image loaded: {room_image.size}")
 
-        # Download wallpaper image
-        logger.info(f"Downloading wallpaper image from: {wallpaper_url[:80]}...")
+        logger.info(f"Downloading wallpaper image...")
         wallpaper_response = httpx.get(wallpaper_url, timeout=30)
         wallpaper_response.raise_for_status()
-        wallpaper_image = Image.open(BytesIO(wallpaper_response.content)).convert('RGB')
         wallpaper_base64 = base64.b64encode(wallpaper_response.content).decode('utf-8')
-        logger.info(f"Wallpaper image loaded: {wallpaper_image.size}")
 
-        # Ask OpenAI to detect the main wall
-        logger.info("Asking OpenAI to detect wall boundaries...")
-        prompt = """
-Analyze this room photo and identify the MAIN wall that would be best for wallpaper.
-
-Return ONLY a JSON object with the wall's bounding box as percentages (0-100) of image dimensions:
-{
-    "wall_detected": true,
-    "bounding_box": {
-        "x_percent": 10,
-        "y_percent": 20,
-        "width_percent": 60,
-        "height_percent": 50
-    },
-    "wall_description": "Main wall facing camera",
-    "confidence": 0.9,
-    "perspective": "front" | "left" | "right" | "angled"
-}
-
-The bounding box should cover the entire wall surface, excluding baseboards and crown molding.
-"""
-
-        response = client.chat.completions.create(
+        # Step 1: GPT-4 Vision analyzes both images
+        logger.info("Analyzing images with GPT-4 Vision...")
+        analysis = client.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{room_base64}"
-                            }
-                        }
-                    ]
-                }
-            ],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": """
+I will give you two images:
+1. A room photo
+2. A wallpaper pattern
+
+Your task:
+1. Identify the main wall in the room (position, size, lighting)
+2. Describe how the wallpaper would look applied to that wall
+3. Create a detailed prompt for DALL-E to generate the composite
+
+Return ONLY JSON:
+{
+    "wall_position": "center-left wall, approximately 40% of image width",
+    "lighting": "natural light from window on left, soft shadows",
+    "dalle_prompt": "Photorealistic interior of [room style] with [wallpaper description] applied to the main wall, matching perspective and lighting"
+}
+"""},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{room_base64}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{wallpaper_base64}"}}
+                ]
+            }],
             max_tokens=500,
         )
 
-        result_text = response.choices[0].message.content.strip()
-        logger.info(f"OpenAI response: {result_text[:200]}...")
+        analysis_text = analysis.choices[0].message.content.strip()
+        logger.info(f"Analysis: {analysis_text[:200]}...")
 
+        # Parse analysis
         import re
-        json_match = re.search(r'\{[\s\S]*\}', result_text)
-        if not json_match:
-            logger.error("No JSON found in OpenAI response")
-            return None
+        json_match = re.search(r'\{[\s\S]*\}', analysis_text)
+        if json_match:
+            analysis_result = json.loads(json_match.group())
+            dalle_prompt = analysis_result.get("dalle_prompt", "Room with wallpaper on wall")
+        else:
+            dalle_prompt = "Photorealistic room with the shown wallpaper pattern applied to the main wall"
 
-        result = json.loads(json_match.group())
+        # Step 2: DALL-E 3 generates the composite using room image as base
+        logger.info("Generating with DALL-E 3...")
 
-        if not result.get("wall_detected"):
-            logger.warning(f"OpenAI did not detect wall: {result.get('reason', 'unknown')}")
-            return None
-
-        # Get wall boundaries
-        bbox = result.get("bounding_box", {})
-        x_pct = bbox.get("x_percent", 10)
-        y_pct = bbox.get("y_percent", 20)
-        w_pct = bbox.get("width_percent", 60)
-        h_pct = bbox.get("height_percent", 50)
-        perspective = result.get("perspective", "front")
-
-        logger.info(f"Wall detected: x={x_pct}%, y={y_pct}%, w={w_pct}%, h={h_pct}%, perspective={perspective}")
-
-        # Composite the wallpaper onto the detected wall
-        logger.info("Compositing wallpaper onto wall...")
-        preview_image = composite_wallpaper_on_wall(
-            room_image, wallpaper_image,
-            x_pct/100, y_pct/100, w_pct/100, h_pct/100,
-            perspective
+        dalle_response = client.images.edit(
+            model="dall-e-3",
+            image=BytesIO(room_response.content),
+            prompt=dalle_prompt + ". Apply the wallpaper pattern seamlessly to the wall. Match lighting and perspective exactly.",
+            n=1,
+            size="1024x1024",
         )
 
-        # Save composite to bytes
-        output = BytesIO()
-        preview_image.save(output, format='JPEG', quality=90)
-        output.seek(0)
-
-        # Upload composite to R2
-        from r2_client import r2_client
-        import uuid
-        filename = f"previews/{uuid.uuid4()}.jpg"
-        logger.info(f"Uploading preview to R2: {filename}")
-
-        public_url = r2_client.upload_file(
-            file_data=output.getvalue(),
-            filename=filename,
-            content_type='image/jpeg'
-        )
-
-        logger.info(f"Preview uploaded: {public_url}")
+        preview_url = dalle_response.data[0].url
+        logger.info(f"Preview generated: {preview_url}")
 
         return {
             "success": True,
-            "preview_url": public_url,
-            "description": f"Wallpaper applied to {result.get('wall_description', 'main wall')}",
-            "provider": "openai",
-            "wall_info": {
-                "description": result.get("wall_description", ""),
-                "confidence": result.get("confidence", 0.8),
-                "perspective": perspective
-            }
+            "preview_url": preview_url,
+            "description": analysis_result.get("wall_position", "Wallpaper applied"),
+            "provider": "openai-dalle3"
         }
 
     except Exception as e:
-        logger.error(f"OpenAI preview generation error: {str(e)}", exc_info=True)
+        logger.error(f"OpenAI error: {str(e)}", exc_info=True)
         return None
-
-
-def composite_wallpaper_on_wall(
-    room_image: Image.Image,
-    wallpaper_image: Image.Image,
-    x_pct: float, y_pct: float, w_pct: float, h_pct: float,
-    perspective: str = "front"
-) -> Image.Image:
-    """
-    Composite wallpaper image onto the detected wall area of room image
-
-    Args:
-        room_image: Original room photo
-        wallpaper_image: Wallpaper pattern
-        x_pct, y_pct, w_pct, h_pct: Wall boundaries as percentages (0-1)
-        perspective: Wall perspective ("front", "left", "right", "angled")
-
-    Returns:
-        Composite image with wallpaper applied
-    """
-    import cv2
-    import numpy as np
-    from PIL import Image
-
-    # Convert to OpenCV format
-    room_cv = cv2.cvtColor(np.array(room_image), cv2.COLOR_RGB2BGR)
-    wallpaper_cv = cv2.cvtColor(np.array(wallpaper_image), cv2.COLOR_RGB2BGR)
-
-    # Get dimensions
-    h, w = room_cv.shape[:2]
-
-    # Calculate wall region in pixels
-    x1 = int(x_pct * w)
-    y1 = int(y_pct * h)
-    x2 = int((x_pct + w_pct) * w)
-    y2 = int((y_pct + h_pct) * h)
-
-    # Ensure valid coordinates
-    x1, x2 = max(0, x1), min(w, x2)
-    y1, y2 = max(0, y1), min(h, y2)
-
-    if x2 <= x1 or y2 <= y1:
-        logger.warning("Invalid wall coordinates, using center wall")
-        x1, y1 = int(w * 0.2), int(h * 0.2)
-        x2, y2 = int(w * 0.8), int(h * 0.7)
-
-    wall_w = x2 - x1
-    wall_h = y2 - y1
-
-    # Resize wallpaper to fit wall
-    wallpaper_resized = cv2.resize(wallpaper_cv, (wall_w, wall_h))
-
-    # Apply perspective transform if needed
-    if perspective == "left":
-        # Slight left perspective
-        pts1 = np.float32([[0, 0], [wall_w, 0], [wall_w, wall_h], [0, wall_h]])
-        pts2 = np.float32([[0, 0], [wall_w * 0.9, 0], [wall_w, wall_h], [wall_w * 0.1, wall_h]])
-        matrix = cv2.getPerspectiveTransform(pts1, pts2)
-        wallpaper_resized = cv2.warpPerspective(wallpaper_resized, matrix, (wall_w, wall_h))
-    elif perspective == "right":
-        # Slight right perspective
-        pts1 = np.float32([[0, 0], [wall_w, 0], [wall_w, wall_h], [0, wall_h]])
-        pts2 = np.float32([[wall_w * 0.1, 0], [wall_w, 0], [wall_w * 0.9, wall_h], [0, wall_h]])
-        matrix = cv2.getPerspectiveTransform(pts1, pts2)
-        wallpaper_resized = cv2.warpPerspective(wallpaper_resized, matrix, (wall_w, wall_h))
-
-    # Apply lighting/shadow to match room
-    # Create a gradient overlay to simulate lighting
-    overlay = np.zeros((wall_h, wall_w, 3), dtype=np.uint8)
-
-    # Top-to-bottom gradient (ceiling shadow)
-    for i in range(wall_h):
-        brightness = 1.0 - (i / wall_h) * 0.3  # Darker at bottom
-        overlay[i, :] = [int(50 * (1 - brightness)), int(50 * (1 - brightness)), int(50 * (1 - brightness))]
-
-    # Apply overlay with transparency
-    wallpaper_with_shadow = cv2.addWeighted(wallpaper_resized, 0.85, overlay, 0.15, 0)
-
-    # Blend with slight transparency to keep some wall texture
-    room_region = room_cv[y1:y2, x1:x2].copy()
-    blended = cv2.addWeighted(wallpaper_with_shadow, 0.9, room_region, 0.1, 0)
-
-    # Add border to simulate wall edges
-    cv2.rectangle(blended, (0, 0), (wall_w - 1, wall_h - 1), (0, 0, 0), 1)
-
-    # Place back into room image
-    result = room_cv.copy()
-    result[y1:y2, x1:x2] = blended
-
-    # Convert back to PIL format
-    result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(result_rgb)
 
 
 def generate_preview_with_gemini(
