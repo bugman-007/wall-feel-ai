@@ -17,7 +17,8 @@ export default function PreviewDisplay({
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
 
-  const handleMouseDown = () => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault() // Prevent text selection
     setIsDragging(true)
   }
 
@@ -27,6 +28,7 @@ export default function PreviewDisplay({
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging) return
+    e.preventDefault() // Prevent text selection during drag
 
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
@@ -38,26 +40,27 @@ export default function PreviewDisplay({
     <div className="w-full max-w-4xl mx-auto">
       {/* Comparison Container */}
       <div
-        className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-col-resize"
+        className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-col-resize select-none"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
         {/* Original Image (Background) */}
-        <div className="relative w-full aspect-[4/3]">
+        <div className="relative w-full aspect-[4/3] pointer-events-none">
           <Image
             src={originalUrl}
             alt="Original room"
             fill
             className="object-cover"
             unoptimized
+            draggable={false}
           />
         </div>
 
         {/* Preview Image (Overlay with clip) */}
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 pointer-events-none"
           style={{
             clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
           }}
@@ -68,6 +71,7 @@ export default function PreviewDisplay({
             fill
             className="object-cover"
             unoptimized
+            draggable={false}
           />
         </div>
 
