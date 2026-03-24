@@ -109,5 +109,30 @@ class R2Client:
         except:
             return False
 
+    def get_presigned_url(self, filename: str, expiration: int = 3600) -> str:
+        """
+        Generate a presigned URL for temporary public access
+
+        Args:
+            filename: Name of the file
+            expiration: URL validity in seconds (default: 1 hour)
+
+        Returns:
+            Presigned URL that can be accessed publicly
+        """
+        try:
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': filename
+                },
+                ExpiresIn=expiration
+            )
+            return url
+        except Exception as e:
+            logger.error(f"Failed to generate presigned URL: {str(e)}")
+            raise Exception(f"Failed to generate presigned URL: {str(e)}")
+
 # Create singleton instance
 r2_client = R2Client()

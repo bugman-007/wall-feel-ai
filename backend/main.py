@@ -48,12 +48,13 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 class SegmentRequest(BaseModel):
     image_url: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg"
             }
         }
+    }
 
 class WallMask(BaseModel):
     id: str
@@ -134,15 +135,22 @@ async def upload_image(file: UploadFile = File(...)):
 
         # Upload to R2
         try:
-            public_url = r2_client.upload_file(
+            r2_client.upload_file(
                 file_data=file_content,
                 filename=unique_filename,
                 content_type=file.content_type
             )
 
+            # Generate presigned URL for AI access (private buckets)
+            presigned_url = r2_client.get_presigned_url(
+                filename=unique_filename,
+                expiration=7200  # 2 hours
+            )
+
             return {
                 "success": True,
-                "url": public_url,
+                "url": presigned_url,
+                "public_url": f"https://pub-{r2_client.account_id}.r2.dev/{unique_filename}",
                 "filename": unique_filename,
                 "size": file_size,
                 "content_type": file.content_type
@@ -403,8 +411,8 @@ class CreateOrderRequest(BaseModel):
     price: float = Field(gt=0, description="Total price in GBP")
     customer_email: EmailStr
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "preview_image_url": "https://...",
                 "original_image_url": "https://...",
@@ -417,6 +425,7 @@ class CreateOrderRequest(BaseModel):
                 "customer_email": "customer@example.com"
             }
         }
+    }
 
 @app.post("/api/apply-wallpaper")
 async def apply_wallpaper(request: ApplyWallpaperRequest):
