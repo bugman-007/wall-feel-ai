@@ -48,42 +48,32 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
 
-        # Prompt for wall detection - requests FULL wall rectangle (Issue 1 fix)
-        prompt = """You are an expert interior design AI analyzing room photos for wallpaper application.
+        # Prompt for wall detection - requests FULL wall rectangle (Issue 1 fix - REVISED)
+        prompt = """You are a wall detection AI for wallpaper application.
 
-TASK: Identify the MAIN wall for wallpaper application.
+TASK: Find the MAIN wall and return its FULL rectangular boundary.
 
-GUIDELINES FOR WALL SELECTION:
-1. Choose the largest, most prominent back wall facing the camera
-2. The wall boundary must include the FULL rectangular surface from corner to corner
-3. EXTEND the wall polygon to the room corners and ceiling line — even if furniture, TV,
-   or objects are in front of the wall. Wallpaper goes BEHIND these objects.
-4. DO NOT shrink the wall polygon around furniture or mounted objects
-5. DO include the area behind the TV, behind shelves, behind lamps — it is still wall
-6. DO NOT include floor, ceiling, windows frames, or door frames
+CRITICAL RULES:
+1. The segmentation MUST be a RECTANGLE (4 corners only)
+2. The rectangle must span WALL-TO-WALL (left corner to right corner)
+3. The rectangle must span FLOOR-TO-CEILING
+4. IGNORE all furniture, TV, pictures, shelves in front of the wall
+5. The wall EXISTS BEHIND furniture - include those areas
 
-Return ONLY valid JSON (no markdown, no code blocks):
+EXAMPLE - If wall is 890x480 pixels:
+- CORRECT: segmentation [[0,0], [890,0], [890,480], [0,480]] (full rectangle)
+- WRONG: segmentation that cuts around TV or furniture
+
+Return ONLY valid JSON (no markdown):
 {
     "wall_detected": true,
-    "wall_description": "Full back wall from corner to corner behind furniture",
-    "bounding_box": {
-        "x": 0,
-        "y": 0,
-        "width": 890,
-        "height": 480
-    },
-    "segmentation": [
-        [0, 0],
-        [890, 0],
-        [890, 480],
-        [0, 480]
-    ],
+    "wall_description": "Full back wall",
+    "bounding_box": {"x": 0, "y": 0, "width": 890, "height": 480},
+    "segmentation": [[0,0], [890,0], [890,480], [0,480]],
     "confidence": 0.95
 }
 
-CRITICAL: The segmentation polygon should be a simple rectangle covering the
-ENTIRE wall surface. Do not cut holes around furniture or objects.
-If no clear wall is visible, return: {"wall_detected": false, "reason": "explanation"}
+If no wall visible: {"wall_detected": false, "reason": "no clear wall"}
 """
 
         # Create image part for Gemini and get dimensions

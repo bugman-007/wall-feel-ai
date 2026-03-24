@@ -23,12 +23,48 @@ class StabilityClient:
         """Check if Stability AI is properly configured"""
         return bool(self.api_key)
 
+    def _resize_for_stability(self, image_data: bytes, max_size: int = 1024) -> bytes:
+        """
+        Resize image to max dimension while keeping aspect ratio.
+        Issue 6 fix: Stability AI works best at ~1024px, dimensions must be divisible by 64.
+
+        Args:
+            image_data: Image bytes
+            max_size: Maximum dimension (default 1024)
+
+        Returns:
+            Resized image bytes (PNG format)
+        """
+        from PIL import Image
+        from io import BytesIO
+
+        img = Image.open(BytesIO(image_data))
+        w, h = img.size
+
+        # Resize if larger than max_size
+        if max(w, h) > max_size:
+            ratio = max_size / max(w, h)
+            new_w = int(w * ratio)
+            new_h = int(h * ratio)
+            # Make dimensions divisible by 64 (SDXL requirement)
+            new_w = (new_w // 64) * 64
+            new_h = (new_h // 64) * 64
+            # Ensure at least 64x64
+            new_w = max(64, new_w)
+            new_h = max(64, new_h)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            logger.info(f"Resized image from {w}x{h} to {new_w}x{new_h}")
+
+        buf = BytesIO()
+        img.save(buf, format='PNG')
+        return buf.getvalue()
+
     def generate_inpainting(
         self,
         image_url: str,
         mask_url: str,
         prompt: str,
-        strength: float = 0.7
+        strength: float = 0.20  # Issue 3 fix: Default low strength for lighting refinement only
     ) -> Dict[str, Any]:
         """
         Generate inpainted image using SDXL
@@ -64,6 +100,10 @@ class StabilityClient:
         except Exception as e:
             logger.error(f"Failed to download images: {str(e)}")
             raise ValueError(f"Failed to download images: {str(e)}")
+
+        # Issue 6 fix: Resize images for Stability AI (optimal: 1024px, divisible by 64)
+        image_data = self._resize_for_stability(image_data, max_size=1024)
+        mask_data = self._resize_for_stability(mask_data, max_size=1024)
 
         # Call Stability AI API
         headers = {
