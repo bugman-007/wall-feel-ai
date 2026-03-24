@@ -48,13 +48,22 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
 
-        # Prompt for wall detection - optimized for JSON output
-        prompt = """You are a wall detection AI. Analyze this room photo and identify the MAIN wall best for wallpaper.
+        # Prompt for wall detection - optimized for JSON output with better accuracy
+        prompt = """You are an expert interior design AI analyzing room photos for wallpaper application.
 
-Return ONLY valid JSON (no markdown, no extra text):
+TASK: Identify the MAIN wall that would be best for applying wallpaper.
+
+GUIDELINES FOR WALL SELECTION:
+1. Choose the largest, most prominent wall visible in the image
+2. Prefer walls that are mostly flat and unobstructed (minimal furniture blocking)
+3. Typically this is the back wall facing the camera, or the largest side wall
+4. DO NOT include windows, doors, or furniture in the wall area
+5. The wall should be a rectangular surface from floor to ceiling
+
+Return ONLY valid JSON (no markdown, no code blocks, no extra text):
 {
     "wall_detected": true,
-    "wall_description": "Main wall facing camera",
+    "wall_description": "Main wall facing camera, behind the sofa",
     "bounding_box": {
         "x": 100,
         "y": 80,
@@ -70,10 +79,12 @@ Return ONLY valid JSON (no markdown, no extra text):
     "confidence": 0.92
 }
 
-Rules:
-- Segmentation must be a polygon (4+ [x,y] points) outlining the wall
+IMPORTANT RULES:
+- Segmentation must be a 4-point polygon outlining ONLY the wall surface (not furniture/objects)
 - Coordinates are in pixels from top-left (0,0)
-- If no clear wall, return: {"wall_detected": false, "reason": "why"}
+- Be precise: the polygon should trace the actual visible wall boundaries
+- If the wall is partially blocked, outline only the visible portion
+- If no clear wall is visible, return: {"wall_detected": false, "reason": "explanation"}
 """
 
         # Create image part for Gemini
@@ -236,19 +247,20 @@ def generate_preview_with_stability(
             # Decode base64 image
             image_bytes = base64.b64decode(result["image_base64"])
 
-            # Upload to R2
+            # Upload to R2 and get presigned URL for frontend access
             preview_filename = f"previews/{uuid.uuid4()}.png"
-            public_url = r2_client.upload_file(
+            public_url, presigned_url = r2_client.upload_file_with_presigned_url(
                 file_data=image_bytes,
                 filename=preview_filename,
-                content_type='image/png'
+                content_type='image/png',
+                expiration=7200  # 2 hours
             )
 
-            logger.info(f"Preview generated: {public_url}")
+            logger.info(f"Preview generated: {public_url} (using presigned URL for frontend)")
 
             return {
                 "success": True,
-                "preview_url": public_url,
+                "preview_url": presigned_url,  # Return presigned URL for frontend
                 "provider": "stability-sdxl",
                 "description": "Wallpaper applied to wall"
             }
@@ -311,11 +323,19 @@ def generate_wallpaper_preview_gemini(
         logger.info("Step 2: Creating mask image...")
         mask_bytes = create_mask_image(segmentation, room_w, room_h)
 
-        # Step 3: SDXL inpainting
+        # Step 3: SDXL inpainting with improved prompt
         logger.info("Step 3: Generating preview with Stability AI SDXL...")
-        prompt = f"""Apply this wallpaper pattern to the wall. Make it look photorealistic with proper lighting and perspective.
-Wallpaper: {wallpaper_url}
-Target: {wall_mask.get('description', 'main wall')}"""
+        prompt = f"""Photorealistic wallpaper application. Apply the wallpaper pattern seamlessly to the wall surface only.
+- Match the room's lighting direction and intensity
+- Apply natural perspective and depth
+- Keep realistic shadows and highlights
+- Blend edges naturally with surrounding walls
+- Maintain the wallpaper pattern's scale and clarity
+- Do not modify furniture, floors, ceiling, or other objects
+
+Wallpaper pattern to apply: {wallpaper_url}
+Target wall: {wall_mask.get('description', 'main wall')}
+"""
 
         preview_result = generate_preview_with_stability(
             image_url=image_url,
