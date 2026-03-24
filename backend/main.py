@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from r2_client import r2_client
 from runpod_client import runpod_client
 from ai_wall_detector import detect_wall_ai
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 load_dotenv()
@@ -256,13 +256,14 @@ class AIWallDetectRequest(BaseModel):
     image_url: str
     wallpaper_id: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
                 "wallpaper_id": "floral-001"
             }
         }
+    }
 
 
 @app.post("/api/ai-detect-wall")
