@@ -10,3 +10,4 @@ google-generativeai>=0.3.0
 pillow>=10.0.0
 numpy>=1.24.0
 requests>=2.31.0
+opencv-python-headless>=4.8.0
