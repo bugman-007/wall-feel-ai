@@ -213,20 +213,21 @@ def generate_preview_with_stability(
         room_image = Image.open(BytesIO(room_response.content))
         room_w, room_h = room_image.size
 
-        # Create mask URL (upload to R2 temporarily)
+        # Create mask URL with presigned URL for private bucket access
         mask_filename = f"masks/{uuid.uuid4()}.png"
-        mask_url = r2_client.upload_file(
+        public_url, presigned_url = r2_client.upload_file_with_presigned_url(
             file_data=mask_bytes,
             filename=mask_filename,
-            content_type='image/png'
+            content_type='image/png',
+            expiration=7200  # 2 hours
         )
 
-        logger.info(f"Mask uploaded: {mask_url}")
+        logger.info(f"Mask uploaded: {public_url} (using presigned URL for AI access)")
 
-        # Call Stability AI inpainting
+        # Call Stability AI inpainting with presigned URL
         result = stability_client.generate_inpainting(
             image_url=image_url,
-            mask_url=mask_url,
+            mask_url=presigned_url,
             prompt=prompt,
             strength=0.75
         )

@@ -135,5 +135,43 @@ class R2Client:
             logger.error(f"Failed to generate presigned URL: {str(e)}")
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
 
+    def upload_file_with_presigned_url(self, file_data: bytes, filename: str, content_type: str = 'image/jpeg', expiration: int = 7200) -> tuple[str, str]:
+        """
+        Upload file to R2 and return both public URL and presigned URL
+        Use this for private buckets that need temporary public access
+
+        Args:
+            file_data: File content as bytes
+            filename: Name for the file in R2
+            content_type: MIME type of the file
+            expiration: Presigned URL validity in seconds (default: 2 hours)
+
+        Returns:
+            Tuple of (public_url, presigned_url)
+        """
+        try:
+            logger.info(f"Uploading file to R2: {filename}")
+
+            # Upload to R2
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=filename,
+                Body=file_data,
+                ContentType=content_type
+            )
+
+            # Generate public URL (for reference)
+            public_url = f"https://pub-{self.account_id}.r2.dev/{filename}"
+
+            # Generate presigned URL for AI service access
+            presigned_url = self.get_presigned_url(filename, expiration)
+
+            logger.info(f"File uploaded successfully, presigned URL valid for {expiration}s")
+            return public_url, presigned_url
+
+        except Exception as e:
+            logger.error(f"R2 upload failed: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to upload to R2: {str(e)}")
+
 # Create singleton instance
 r2_client = R2Client()
