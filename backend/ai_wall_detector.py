@@ -4,6 +4,7 @@ For automatic wall detection and wallpaper inpainting
 """
 
 import os
+import base64
 import logging
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
