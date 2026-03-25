@@ -1,5 +1,5 @@
 """
-AI Wall Detector using Gemini 2.0 Flash + Stability AI SDXL
+AI Wall Detector using Gemini 2.0 Flash + Replicate SDXL
 For automatic wall detection and wallpaper inpainting
 """
 
@@ -44,7 +44,7 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
             return None
 
         genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-3-flash-preview')
 
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
@@ -177,173 +177,20 @@ def create_mask_image(segmentation: List[List[float]], image_width: int, image_h
     return output.getvalue()
 
 
-def composite_wallpaper_onto_wall(
-    room_image_bytes: bytes,
-    wallpaper_bytes: bytes,
-    mask_bytes: bytes,
-    segmentation: list
-) -> bytes:
-    """
-    Composite wallpaper onto wall using OpenCV.
-    Returns composited image for Stability AI to refine lighting only.
-
-    Issue 2 fix: Pass actual wallpaper image instead of just URL in text prompt.
-    """
-    import cv2
-    import numpy as np
-    from PIL import Image
-    from io import BytesIO
-
-    # Load images
-    room_img = cv2.imdecode(np.frombuffer(room_image_bytes, np.uint8), cv2.IMREAD_COLOR)
-    wallpaper_img = cv2.imdecode(np.frombuffer(wallpaper_bytes, np.uint8), cv2.IMREAD_COLOR)
-    mask_img = cv2.imdecode(np.frombuffer(mask_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
-
-    if room_img is None or wallpaper_img is None:
-        logger.error("Failed to decode images for compositing")
-        return room_image_bytes
-
-    h, w = room_img.shape[:2]
-
-    # --- TILE WALLPAPER PATTERN ---
-    # Resize wallpaper to a reasonable tile size (e.g., 512x512)
-    wallpaper_resized = cv2.resize(wallpaper_img, (512, 512))
-
-    # Tile the wallpaper to cover the entire room dimensions
-    # This creates a seamless pattern that covers the whole image
-    tiled_wallpaper = np.tile(wallpaper_resized, (
-        (h + 511) // 512,  # Number of tiles vertically
-        (w + 511) // 512,  # Number of tiles horizontally
-        1
-    ))[:h, :w]  # Crop to exact room dimensions
-
-    # --- APPLY WALLPAPER TO WALL REGION USING MASK ---
-    # The mask defines the exact wall area (white = apply wallpaper, black = keep original)
-    # Normalize mask to 0-1 range for alpha blending
-    alpha = mask_img.astype(float) / 255.0
-    alpha_3ch = np.stack([alpha, alpha, alpha], axis=2)
-
-    # Blend tiled wallpaper with original room
-    room_float = room_img.astype(float)
-    wp_float = tiled_wallpaper.astype(float)
-    composited = (wp_float * alpha_3ch + room_float * (1 - alpha_3ch)).astype(np.uint8)
-
-    # --- FEATHER MASK EDGES for smooth blending ---
-    mask_blurred = cv2.GaussianBlur(mask_img, (31, 31), 0)
-    alpha_blurred = mask_blurred.astype(float) / 255.0
-    alpha_3ch_blurred = np.stack([alpha_blurred, alpha_blurred, alpha_blurred], axis=2)
-
-    # Re-apply with feathered edges
-    composited = (wp_float * alpha_3ch_blurred + room_float * (1 - alpha_3ch_blurred)).astype(np.uint8)
-
-    # Return as PNG bytes
-    _, buf = cv2.imencode('.png', composited)
-    return buf.tobytes()
-
-
-def generate_preview_with_stability(
-    image_url: str,
-    mask_bytes: bytes,
-    wallpaper_url: str,
-    prompt: str
-) -> Optional[Dict[str, Any]]:
-    """
-    Generate wallpaper preview using Stability AI SDXL inpainting
-
-    Args:
-        image_url: Original room image URL
-        mask_bytes: Mask image as PNG bytes (white=wall, black=rest)
-        wallpaper_url: Wallpaper pattern URL
-        prompt: Inpainting prompt
-
-    Returns:
-        Dict with preview_url and metadata, or None if failed
-    """
-    try:
-        from replicate_client import replicate_client
-        import base64
-        import httpx
-        from PIL import Image
-        from io import BytesIO
-        import uuid
-        from r2_client import r2_client
-
-        if not replicate_client.is_configured():
-            logger.warning("Replicate not configured")
-            return None
-
-        # Download wallpaper to get dimensions
-        wallpaper_response = httpx.get(wallpaper_url, timeout=30)
-        wallpaper_response.raise_for_status()
-        wallpaper_image = Image.open(BytesIO(wallpaper_response.content))
-
-        # Download room image to get dimensions
-        room_response = httpx.get(image_url, timeout=30)
-        room_response.raise_for_status()
-        room_image = Image.open(BytesIO(room_response.content))
-        room_w, room_h = room_image.size
-
-        # Create mask URL with presigned URL for private bucket access
-        mask_filename = f"masks/{uuid.uuid4()}.png"
-        public_url, presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=mask_bytes,
-            filename=mask_filename,
-            content_type='image/png',
-            expiration=7200  # 2 hours
-        )
-
-        logger.info(f"Mask uploaded: {public_url} (using presigned URL for AI access)")
-
-        # Call Stability AI inpainting with presigned URL
-        result = replicate_client.generate_inpainting(
-            image_url=image_url,
-            mask_url=presigned_url,
-            prompt=prompt,
-            strength=0.75
-        )
-
-        if result and result.get("success"):
-            # Decode base64 image
-            image_bytes = base64.b64decode(result["image_base64"])
-
-            # Upload to R2 and get presigned URL for frontend access
-            preview_filename = f"previews/{uuid.uuid4()}.png"
-            public_url, presigned_url = r2_client.upload_file_with_presigned_url(
-                file_data=image_bytes,
-                filename=preview_filename,
-                content_type='image/png',
-                expiration=7200  # 2 hours
-            )
-
-            logger.info(f"Preview generated: {public_url} (using presigned URL for frontend)")
-
-            return {
-                "success": True,
-                "preview_url": presigned_url,  # Return presigned URL for frontend
-                "provider": "stability-sdxl",
-                "description": "Wallpaper applied to wall"
-            }
-
-        return None
-
-    except Exception as e:
-        logger.error(f"Stability AI preview error: {str(e)}", exc_info=True)
-        return None
-
-
 def generate_wallpaper_preview_gemini(
     image_url: str,
     wallpaper_url: str,
     segmentation: Optional[List[List[float]]] = None  # Manual or auto-detect segmentation
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using Gemini + OpenCV compositing + Stability AI refinement
+    Generate wallpaper preview using Gemini + Replicate SDXL inpainting
 
-    Updated Flow (Issue 2 & 3 fix):
+    Flow:
     1. Gemini detects wall and returns segmentation (OR use provided segmentation)
     2. Create mask image from segmentation
-    3. OpenCV composites wallpaper onto wall with perspective warp
-    4. Stability AI refines lighting only (low strength=0.20)
+    3. Upload room image and mask to R2
+    4. SDXL inpainting applies wallpaper pattern to wall region
+    5. Return final generated image
 
     Args:
         image_url: Room image URL
@@ -395,30 +242,25 @@ def generate_wallpaper_preview_gemini(
         logger.info("Step 2: Creating mask image...")
         mask_bytes = create_mask_image(segmentation, room_w, room_h)
 
-        # Step 3: Download wallpaper and composite using OpenCV (Issue 2 fix)
-        logger.info("Step 3: Compositing wallpaper with OpenCV perspective warp...")
+        # Step 3: Download wallpaper to analyze pattern for prompt
+        logger.info("Step 3: Analyzing wallpaper pattern...")
         wallpaper_response = httpx.get(wallpaper_url, timeout=30)
         wallpaper_response.raise_for_status()
-        wallpaper_bytes = wallpaper_response.content
+        wallpaper_image = Image.open(BytesIO(wallpaper_response.content))
+        wallpaper_w, wallpaper_h = wallpaper_image.size
+        logger.info(f"Wallpaper dimensions: {wallpaper_w}x{wallpaper_h}")
 
-        # Composite wallpaper onto wall
-        composited_bytes = composite_wallpaper_onto_wall(
-            room_image_bytes=room_image_bytes,
-            wallpaper_bytes=wallpaper_bytes,
-            mask_bytes=mask_bytes,
-            segmentation=segmentation
-        )
-
-        # Step 4: Upload composited image and mask to R2
-        composited_filename = f"composited/{uuid.uuid4()}.png"
-        _, composited_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=composited_bytes,
-            filename=composited_filename,
+        # Step 4: Upload room image and mask to R2
+        # Upload room image (get presigned URL for AI access)
+        room_filename = f"rooms/{uuid.uuid4()}.png"
+        _, room_presigned_url = r2_client.upload_file_with_presigned_url(
+            file_data=room_image_bytes,
+            filename=room_filename,
             content_type='image/png',
             expiration=7200
         )
 
-        # Also upload mask for Replicate SDXL
+        # Upload mask for Replicate SDXL
         # IMPORTANT: Invert mask - Replicate expects black=keep, white=inpaint
         # Our mask is white=wall, black=rest, so we need to invert it
         from PIL import Image, ImageOps
@@ -436,24 +278,25 @@ def generate_wallpaper_preview_gemini(
             expiration=7200
         )
 
-        logger.info(f"Composited image uploaded (using presigned URL for Stability AI)")
+        logger.info(f"Room image and mask uploaded (presigned URLs for AI access)")
 
-        # Step 5: Stability AI refines lighting only (Issue 3 fix - low strength)
-        logger.info("Step 4: Refining lighting with Stability AI SDXL (strength=0.20)...")
-        prompt = """Photorealistic room photo. Blend wallpaper edges naturally.
-Adjust lighting and shadows only. Do not change the wallpaper pattern.
-Do not modify furniture, floor, ceiling, or any objects.
-Keep the exact wallpaper design unchanged.
+        # Step 5: SDXL inpainting - apply wallpaper pattern to wall
+        logger.info("Step 4: Generating preview with SDXL inpainting...")
+        prompt = f"""Apply this wallpaper pattern to the wall area: {wallpaper_url}
+Photorealistic room photo with wallpaper applied to wall.
+Match perspective, lighting, and shadows naturally.
+Keep furniture, floor, ceiling unchanged.
+Seamless blend at edges.
 """
 
         from replicate_client import replicate_client
         import base64
 
         result = replicate_client.generate_inpainting(
-            image_url=composited_presigned_url,  # Use composited image, not original
+            image_url=room_presigned_url,  # Use original room image
             mask_url=mask_presigned_url,
             prompt=prompt,
-            strength=0.20  # Issue 3 fix: Very low - only refine lighting
+            strength=0.75  # Higher strength to fully apply wallpaper pattern
         )
 
         if result and result.get("success"):
@@ -474,25 +317,12 @@ Keep the exact wallpaper design unchanged.
             return {
                 "success": True,
                 "preview_url": preview_presigned_url,
-                "provider": "stability-sdxl-refinement",
-                "description": "Wallpaper applied to wall with OpenCV + Stability refinement"
+                "provider": "replicate-sdxl",
+                "description": "Wallpaper applied to wall using SDXL inpainting"
             }
 
-        # Fallback: return composited image directly if Stability fails
-        logger.warning("Stability refinement failed, using OpenCV composite directly")
-        _, fallback_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=composited_bytes,
-            filename=f"previews/{uuid.uuid4()}.png",
-            content_type='image/png',
-            expiration=7200
-        )
-
-        return {
-            "success": True,
-            "preview_url": fallback_presigned_url,
-            "provider": "opencv-composite",
-            "description": "Wallpaper applied to wall (OpenCV only)"
-        }
+        logger.warning("SDXL inpainting failed")
+        return None
 
     except Exception as e:
         logger.error(f"Preview generation error: {str(e)}", exc_info=True)
@@ -518,7 +348,7 @@ def generate_wallpaper_preview_ai(
     segmentation: Optional[List[List[float]]] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using Gemini + Stability AI
+    Generate wallpaper preview using Gemini + Replicate SDXL
 
     Args:
         image_url: Room image URL
