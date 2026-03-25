@@ -3,10 +3,7 @@ AI Wall Detector using Gemini 2.0 Flash + Stability AI SDXL
 For automatic wall detection and wallpaper inpainting
 """
 
-import os
-import base64
 import logging
-import io
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
@@ -17,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 def encode_image_to_base64(image_url: str) -> str:
     """Download image from URL and encode to base64"""
+    import base64
     import httpx
 
     response = httpx.get(image_url, timeout=30)
@@ -232,96 +230,6 @@ def composite_wallpaper_onto_wall(
     return buf.tobytes()
 
 
-def generate_preview_with_stability(
-    image_url: str,
-    mask_bytes: bytes,
-    wallpaper_url: str,
-    prompt: str
-) -> Optional[Dict[str, Any]]:
-    """
-    Generate wallpaper preview using Stability AI SDXL inpainting
-
-    Args:
-        image_url: Original room image URL
-        mask_bytes: Mask image as PNG bytes (white=wall, black=rest)
-        wallpaper_url: Wallpaper pattern URL
-        prompt: Inpainting prompt
-
-    Returns:
-        Dict with preview_url and metadata, or None if failed
-    """
-    try:
-        from replicate_client import replicate_client
-        import base64
-        import httpx
-        from PIL import Image
-        from io import BytesIO
-        import uuid
-        from r2_client import r2_client
-
-        if not replicate_client.is_configured():
-            logger.warning("Replicate not configured")
-            return None
-
-        # Download wallpaper to get dimensions
-        wallpaper_response = httpx.get(wallpaper_url, timeout=30)
-        wallpaper_response.raise_for_status()
-        wallpaper_image = Image.open(BytesIO(wallpaper_response.content))
-
-        # Download room image to get dimensions
-        room_response = httpx.get(image_url, timeout=30)
-        room_response.raise_for_status()
-        room_image = Image.open(BytesIO(room_response.content))
-        room_w, room_h = room_image.size
-
-        # Create mask URL with presigned URL for private bucket access
-        mask_filename = f"masks/{uuid.uuid4()}.png"
-        public_url, presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=mask_bytes,
-            filename=mask_filename,
-            content_type='image/png',
-            expiration=7200  # 2 hours
-        )
-
-        logger.info(f"Mask uploaded: {public_url} (using presigned URL for AI access)")
-
-        # Call Stability AI inpainting with presigned URL
-        result = replicate_client.generate_inpainting(
-            image_url=image_url,
-            mask_url=presigned_url,
-            prompt=prompt,
-            strength=0.75
-        )
-
-        if result and result.get("success"):
-            # Decode base64 image
-            image_bytes = base64.b64decode(result["image_base64"])
-
-            # Upload to R2 and get presigned URL for frontend access
-            preview_filename = f"previews/{uuid.uuid4()}.png"
-            public_url, presigned_url = r2_client.upload_file_with_presigned_url(
-                file_data=image_bytes,
-                filename=preview_filename,
-                content_type='image/png',
-                expiration=7200  # 2 hours
-            )
-
-            logger.info(f"Preview generated: {public_url} (using presigned URL for frontend)")
-
-            return {
-                "success": True,
-                "preview_url": presigned_url,  # Return presigned URL for frontend
-                "provider": "stability-sdxl",
-                "description": "Wallpaper applied to wall"
-            }
-
-        return None
-
-    except Exception as e:
-        logger.error(f"Stability AI preview error: {str(e)}", exc_info=True)
-        return None
-
-
 def generate_wallpaper_preview_gemini(
     image_url: str,
     wallpaper_url: str,
@@ -412,6 +320,7 @@ def generate_wallpaper_preview_gemini(
         # Also upload mask for Replicate SDXL
         # IMPORTANT: Invert mask - Replicate expects black=keep, white=inpaint
         # Our mask is white=wall, black=rest, so we need to invert it
+        import io
         from PIL import Image, ImageOps
         mask_image = Image.open(BytesIO(mask_bytes))
         inverted_mask_image = ImageOps.invert(mask_image)
