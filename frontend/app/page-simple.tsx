@@ -24,6 +24,7 @@ interface WallMask {
   segmentation: number[][]
   description?: string
   confidence?: number
+  provider?: string
 }
 
 export default function SimpleHome() {
