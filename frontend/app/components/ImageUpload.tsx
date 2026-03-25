@@ -128,22 +128,22 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       {!preview ? (
         <div
           {...getRootProps()}
-          className={`
-            border-2 border-dashed rounded-lg p-12 text-center cursor-pointer
-            transition-colors duration-200
-            ${isDragActive
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-              : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
-            }
-            ${uploading ? 'opacity-50 cursor-not-allowed' : ''}
-          `}
+          className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+          style={{
+            borderStyle: isDragActive ? 'solid' : 'dashed',
+            borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
+            background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
+            opacity: uploading ? 0.5 : 1,
+            cursor: uploading ? 'not-allowed' : 'pointer'
+          }}
         >
           <input {...getInputProps()} />
 
           <div className="space-y-4">
             <div className="flex justify-center">
               <svg
-                className="w-16 h-16 text-gray-400"
+                className="w-16 h-16"
+                style={{ color: 'var(--text-muted)' }}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -158,28 +158,28 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             </div>
 
             {isDragActive ? (
-              <p className="text-lg font-medium text-blue-600 dark:text-blue-400">
+              <p className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
                 Drop your image here
               </p>
             ) : (
               <>
-                <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
+                <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
                   Drag & drop your room photo here
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   or click to browse
                 </p>
               </>
             )}
 
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Supports: JPEG, PNG (max 10MB)
             </p>
           </div>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+          <div className="relative rounded-lg overflow-hidden card">
             <Image
               src={preview}
               alt="Uploaded room"
@@ -191,53 +191,30 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
             {/* Upload overlay */}
             {uploading && (
-              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                  <div className="animate-spin rounded-full h-12 w-12 mx-auto mb-4" style={{ border: '3px solid rgba(255,255,255,0.3)', borderTopColor: 'var(--text-primary)' }}></div>
                   <p className="text-white font-medium">Uploading... {uploadProgress}%</p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div className="flex items-center justify-between p-4 card">
             <div className="flex items-center space-x-3">
               {uploading ? (
-                <svg
-                  className="animate-spin h-5 w-5 text-blue-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
+                <svg className="animate-spin h-5 w-5" style={{ color: 'var(--text-primary)' }} fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
               ) : (
-                <svg
-                  className="w-5 h-5 text-green-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
+                <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
+                  <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
               )}
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                 {fileName}
               </span>
             </div>
@@ -245,11 +222,13 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             <button
               onClick={clearImage}
               disabled={uploading}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                uploading
-                  ? 'text-gray-400 cursor-not-allowed'
-                  : 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
-              }`}
+              className="text-sm font-medium transition-colors"
+              style={{
+                color: uploading ? 'var(--text-muted)' : '#ef4444',
+                cursor: uploading ? 'not-allowed' : 'pointer'
+              }}
+              onMouseEnter={(e) => { if (!uploading) e.currentTarget.style.opacity = '0.7' }}
+              onMouseLeave={(e) => { if (!uploading) e.currentTarget.style.opacity = '1' }}
             >
               Remove
             </button>
@@ -257,10 +236,10 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
           {/* Progress bar */}
           {uploading && uploadProgress > 0 && (
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div className="w-full rounded-full h-2" style={{ background: 'var(--bg-tertiary)' }}>
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
+                className="h-2 rounded-full transition-all duration-300"
+                style={{ background: 'var(--text-primary)', width: `${uploadProgress}%` }}
               ></div>
             </div>
           )}
@@ -268,14 +247,9 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       )}
 
       {error && (
-        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="mt-4 p-4 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
           <div className="flex items-center space-x-2">
-            <svg
-              className="w-5 h-5 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-5 h-5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -283,7 +257,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
               {error}
             </p>
           </div>

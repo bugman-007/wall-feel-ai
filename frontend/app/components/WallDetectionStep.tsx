@@ -143,23 +143,23 @@ export default function WallDetectionStep({
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-        3. Select Wall Area
+      <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center" style={{ color: 'var(--text-primary)' }}>
+        Select Wall Area
       </h2>
 
       {/* Detection Status */}
       {isDetecting && (
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">AI is detecting the wall...</p>
+          <div className="animate-spin rounded-full h-12 w-12 mb-4" style={{ border: '3px solid var(--border-light)', borderTopColor: 'var(--text-primary)' }}></div>
+          <p style={{ color: 'var(--text-secondary)' }}>AI is detecting the wall...</p>
         </div>
       )}
 
       {/* Error State */}
       {detectError && points.length === 0 && (
-        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">{detectError}</p>
-          <p className="text-xs text-red-600 dark:text-red-300 mt-2">
+        <div className="mb-6 p-4 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{detectError}</p>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
             Drag the corners to adjust the wall area, then click Confirm.
           </p>
         </div>
@@ -170,7 +170,7 @@ export default function WallDetectionStep({
         <div className="mb-6">
           <div
             ref={containerRef}
-            className="relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-crosshair select-none"
+            className="relative rounded-lg overflow-hidden cursor-crosshair select-none card"
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
@@ -258,29 +258,19 @@ export default function WallDetectionStep({
           </div>
 
           {/* Info message */}
-          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="mt-4 p-4 rounded-xl card">
             <div className="flex items-start space-x-3">
-              <svg
-                className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                   {hasUserModified
                     ? 'Wall area adjusted. Drag corners to fine-tune.'
                     : 'AI detected this wall area. Drag any corner to adjust.'}
                 </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                  Dimensions: {getBoundingBox(points).width.toFixed(0)} x {getBoundingBox(points).height.toFixed(0)} pixels
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Dimensions: {getBoundingBox(points).width.toFixed(0)} × {getBoundingBox(points).height.toFixed(0)} px
                 </p>
               </div>
             </div>
@@ -290,13 +280,13 @@ export default function WallDetectionStep({
           <div className="flex justify-center space-x-4 mt-4">
             <button
               onClick={handleReset}
-              className="px-6 py-3 rounded-lg font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              className="btn-secondary"
             >
               Re-detect
             </button>
             <button
               onClick={handleConfirm}
-              className="px-6 py-3 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              className="btn-primary"
             >
               Confirm
             </button>
@@ -309,7 +299,7 @@ export default function WallDetectionStep({
         <div className="text-center py-12">
           <button
             onClick={handleAutoDetect}
-            className="px-8 py-4 rounded-lg font-semibold text-white text-lg bg-blue-600 hover:bg-blue-700 transition-colors"
+            className="btn-primary text-lg"
           >
             Detect Wall with AI
           </button>
@@ -320,7 +310,10 @@ export default function WallDetectionStep({
       <div className="text-center mt-6">
         <button
           onClick={onSkip}
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline"
+          className="text-sm underline transition-colors"
+          style={{ color: 'var(--text-muted)' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
         >
           Skip wall detection (use full image)
         </button>

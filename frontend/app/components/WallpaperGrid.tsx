@@ -50,35 +50,25 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12" style={{ border: '3px solid var(--border-light)', borderTopColor: 'var(--text-primary)' }}></div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+      <div className="p-6 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
         <div className="flex items-center space-x-2">
-          <svg
-            className="w-5 h-5 text-red-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
+          <svg className="w-5 h-5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
             {error}
           </p>
         </div>
         <button
           onClick={fetchCatalog}
-          className="mt-3 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
+          className="mt-3 text-sm font-medium btn-secondary py-2 px-4"
         >
           Try again
         </button>
@@ -88,7 +78,7 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
 
   if (designs.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+      <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
         <p>No wallpaper designs available.</p>
       </div>
     )
@@ -100,15 +90,13 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
         <button
           key={design.id}
           onClick={() => onWallpaperSelect(design)}
-          className={`
-            group relative rounded-lg overflow-hidden transition-all duration-200
-            ${selectedId === design.id
-              ? 'ring-4 ring-blue-500 scale-105'
-              : 'hover:scale-105 hover:shadow-lg'
-            }
-          `}
+          className="group relative rounded-xl overflow-hidden transition-all duration-200 hover:scale-105 card"
+          style={{
+            border: selectedId === design.id ? '2px solid var(--text-primary)' : '1px solid var(--border-light)',
+            boxShadow: selectedId === design.id ? 'var(--shadow-md)' : 'none'
+          }}
         >
-          <div className="aspect-square relative bg-gray-200 dark:bg-gray-700">
+          <div className="aspect-square relative" style={{ background: 'var(--bg-secondary)' }}>
             <Image
               src={design.thumbnail_url}
               alt={design.name}
@@ -118,8 +106,8 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
             />
 
             {/* Overlay on hover */}
-            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-opacity duration-200 flex items-end">
-              <div className="w-full p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="absolute inset-0 transition-opacity duration-200 flex items-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', opacity: 0 }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}>
+              <div className="w-full p-3">
                 <p className="text-white text-sm font-medium truncate">
                   {design.name}
                 </p>
@@ -131,19 +119,9 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
 
             {/* Selected indicator */}
             {selectedId === design.id && (
-              <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
-                <svg
-                  className="w-4 h-4 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={3}
-                    d="M5 13l4 4L19 7"
-                  />
+              <div className="absolute top-2 right-2 rounded-full p-1" style={{ background: 'var(--text-primary)' }}>
+                <svg className="w-4 h-4" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
             )}
@@ -151,10 +129,10 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
 
           {/* Name below image */}
           <div className="mt-2 px-1">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
               {design.name}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+            <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
               {design.category}
             </p>
           </div>

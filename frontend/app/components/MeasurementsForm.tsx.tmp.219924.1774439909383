@@ -53,7 +53,7 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <form onSubmit={handleSubmit} className="card p-6">
+      <form onSubmit={handleSubmit} className="card-dark p-6">
         {/* Dimensions */}
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
@@ -71,7 +71,7 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
                 max="10"
                 value={width}
                 onChange={(e) => setWidth(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg focus:outline-none transition-all input"
+                className="w-full px-4 py-2 rounded-lg focus:outline-none transition-all input-dark"
                 placeholder="3.2"
               />
             </div>
@@ -86,7 +86,7 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
                 max="10"
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg focus:outline-none transition-all input"
+                className="w-full px-4 py-2 rounded-lg focus:outline-none transition-all input-dark"
                 placeholder="2.4"
               />
             </div>
@@ -109,8 +109,8 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
                   key={key}
                   className="flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all"
                   style={{
-                    borderColor: material === key ? 'var(--text-primary)' : 'var(--border-light)',
-                    background: material === key ? 'var(--bg-secondary)' : 'var(--bg-card)'
+                    borderColor: material === key ? 'var(--accent-primary)' : 'var(--border-color)',
+                    background: material === key ? 'rgba(139, 92, 246, 0.1)' : 'var(--bg-secondary)'
                   }}
                 >
                   <input
@@ -119,7 +119,7 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
                     value={key}
                     checked={material === key}
                     onChange={(e) => setMaterial(e.target.value as MaterialType)}
-                    className="mt-1 mr-3 accent-[var(--text-primary)]"
+                    className="mt-1 mr-3 accent-[var(--accent-primary)]"
                   />
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
@@ -142,7 +142,7 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
 
         {/* Price Breakdown */}
         {pricing && (
-          <div className="mb-6 p-4 rounded-xl" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="mb-6 p-4 rounded-xl" style={{ background: 'var(--bg-tertiary)' }}>
             <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
               Price Breakdown
             </h3>
@@ -159,10 +159,10 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
                 <span>Waste allowance (10%):</span>
                 <span style={{ color: 'var(--text-primary)' }}>{formatPrice(pricing.total - pricing.subtotal)}</span>
               </div>
-              <div className="border-t pt-2 mt-2" style={{ borderColor: 'var(--border-light)' }}>
+              <div className="border-t pt-2 mt-2" style={{ borderColor: 'var(--border-color)' }}>
                 <div className="flex justify-between text-lg font-bold">
                   <span style={{ color: 'var(--text-primary)' }}>Total:</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{formatPrice(pricing.total)}</span>
+                  <span className="gradient-text">{formatPrice(pricing.total)}</span>
                 </div>
               </div>
             </div>
@@ -180,7 +180,8 @@ export default function MeasurementsForm({ onProceedToCheckout }: MeasurementsFo
         <button
           type="submit"
           disabled={!pricing}
-          className={`w-full px-6 py-3 rounded-lg font-semibold text-lg transition-all duration-200 btn-primary ${!pricing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`w-full px-6 py-3 rounded-lg font-semibold text-lg transition-all duration-200 ${!pricing ? 'opacity-50 cursor-not-allowed' : 'btn-primary glow-accent-hover'}`}
+          style={!pricing ? { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' } : {}}
         >
           Proceed to Checkout
         </button>

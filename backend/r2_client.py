@@ -48,13 +48,13 @@ class R2Client:
         try:
             logger.info(f"Uploading file to R2: {filename}")
 
-            # Upload to R2 with public-read ACL for AI service access
+            # Upload to R2 - using private ACL, use presigned URLs for access
+            # Note: ACL='public-read' is a security risk; prefer presigned URLs
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=file_data,
-                ContentType=content_type,
-                ACL='public-read'  # Required for Stability AI to access mask images
+                ContentType=content_type
             )
 
             # Generate public URL
@@ -110,18 +110,21 @@ class R2Client:
         except:
             return False
 
-    def get_presigned_url(self, filename: str, expiration: int = 3600) -> str:
+    def get_presigned_url(self, filename: str, expiration: int = 900) -> str:
         """
         Generate a presigned URL for temporary public access
 
         Args:
             filename: Name of the file
-            expiration: URL validity in seconds (default: 1 hour)
+            expiration: URL validity in seconds (default: 15 minutes for security)
 
         Returns:
             Presigned URL that can be accessed publicly
         """
         try:
+            # Validate expiration (max 1 hour for security)
+            expiration = min(expiration, 3600)
+
             url = self.s3_client.generate_presigned_url(
                 'get_object',
                 Params={
@@ -135,7 +138,7 @@ class R2Client:
             logger.error(f"Failed to generate presigned URL: {str(e)}")
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
 
-    def upload_file_with_presigned_url(self, file_data: bytes, filename: str, content_type: str = 'image/jpeg', expiration: int = 7200) -> tuple[str, str]:
+    def upload_file_with_presigned_url(self, file_data: bytes, filename: str, content_type: str = 'image/jpeg', expiration: int = 1800) -> tuple[str, str]:
         """
         Upload file to R2 and return both public URL and presigned URL
         Use this for private buckets that need temporary public access
@@ -144,7 +147,7 @@ class R2Client:
             file_data: File content as bytes
             filename: Name for the file in R2
             content_type: MIME type of the file
-            expiration: Presigned URL validity in seconds (default: 2 hours)
+            expiration: Presigned URL validity in seconds (default: 30 minutes, max 1 hour)
 
         Returns:
             Tuple of (public_url, presigned_url)
@@ -163,10 +166,10 @@ class R2Client:
             # Generate public URL (for reference)
             public_url = f"https://pub-{self.account_id}.r2.dev/{filename}"
 
-            # Generate presigned URL for AI service access
-            presigned_url = self.get_presigned_url(filename, expiration)
+            # Generate presigned URL for AI service access (capped at 1 hour for security)
+            presigned_url = self.get_presigned_url(filename, min(expiration, 3600))
 
-            logger.info(f"File uploaded successfully, presigned URL valid for {expiration}s")
+            logger.info(f"File uploaded successfully, presigned URL valid for {min(expiration, 3600)}s")
             return public_url, presigned_url
 
         except Exception as e:

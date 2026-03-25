@@ -4,7 +4,6 @@ Security middleware for rate limiting and request validation
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from collections import defaultdict
-from typing import Dict
 from datetime import datetime, timedelta
 import logging
 
@@ -65,14 +64,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Add security headers to all responses
-
-    Security headers implemented:
-    - X-Content-Type-Options: Prevents MIME type sniffing
-    - X-Frame-Options: Prevents clickjacking attacks
-    - X-XSS-Protection: Enables XSS filter
-    - Strict-Transport-Security: Enforces HTTPS
-    - Content-Security-Policy: Restricts resource loading
-    - Referrer-Policy: Controls referrer information
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -83,8 +74,5 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
 
         return response

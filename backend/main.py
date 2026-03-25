@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from r2_client import r2_client
 from ai_wall_detector import detect_wall_ai, generate_wallpaper_preview_ai
 from typing import List, Dict, Any, Optional
+import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 load_dotenv()
@@ -55,12 +56,6 @@ class SegmentRequest(BaseModel):
         }
     }
 
-class WallMask(BaseModel):
-    id: str
-    area: float
-    bbox: List[float]  # [x, y, width, height]
-    segmentation: List[List[float]]  # Polygon points
-
 @app.get("/")
 def read_root():
     return {
@@ -76,16 +71,37 @@ def health_check():
         "service": "wallfeel-api"
     }
 
+# Cache for catalog data (performance optimization)
+_catalog_cache: Optional[Dict] = None
+_catalog_cache_timestamp: float = 0
+_CATALOG_CACHE_TTL = 300  # 5 minutes cache TTL
+
+
 @app.get("/api/catalog")
 def get_catalog():
     """
     Get wallpaper catalog
     Returns list of available wallpaper designs
+
+    Performance: Catalog is cached for 5 minutes to reduce file I/O
     """
+    global _catalog_cache, _catalog_cache_timestamp
+
+    current_time = time.time()
+
+    # Return cached catalog if still valid
+    if _catalog_cache is not None and (current_time - _catalog_cache_timestamp) < _CATALOG_CACHE_TTL:
+        return _catalog_cache
+
     try:
         catalog_path = Path(__file__).parent / "catalog.json"
         with open(catalog_path, 'r') as f:
             catalog = json.load(f)
+
+        # Update cache
+        _catalog_cache = catalog
+        _catalog_cache_timestamp = current_time
+
         return catalog
     except FileNotFoundError:
         return {"designs": []}
@@ -119,6 +135,25 @@ async def upload_image(file: UploadFile = File(...)):
     try:
         file_content = await file.read()
         file_size = len(file_content)
+
+        # Security: Validate file content using magic bytes (not just extension)
+        # JPEG magic bytes: FF D8 FF
+        # PNG magic bytes: 89 50 4E 47
+        if len(file_content) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid image file: file too small"
+            )
+
+        is_jpeg = file_content[:3] == b'\xff\xd8\xff'
+        is_png = file_content[:4] == b'\x89PNG'
+
+        if not (is_jpeg or is_png):
+            logger.warning(f"Potentially malicious file upload attempt: {file.filename}, content_type: {file.content_type}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid image content: file does not match claimed type"
+            )
 
         # Validate file size (10MB max)
         max_size = 10 * 1024 * 1024  # 10MB

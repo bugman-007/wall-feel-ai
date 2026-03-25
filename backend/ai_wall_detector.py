@@ -6,6 +6,7 @@ For automatic wall detection and wallpaper inpainting
 import os
 import base64
 import logging
+import io
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
@@ -43,7 +44,7 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
             return None
 
         genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-2.5-pro')
 
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
@@ -129,7 +130,7 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
                         "description": result.get("wall_description", "Main wall")
                     }],
                     "provider": "gemini",
-                    "model": "gemini-2.0-flash"
+                    "model": "gemini-2.5-pro"
                 }
             else:
                 logger.warning(f"Gemini did not detect wall: {result.get('reason', 'Unknown')}")
@@ -417,10 +418,19 @@ def generate_wallpaper_preview_gemini(
             expiration=7200
         )
 
-        # Also upload mask for Stability AI
+        # Also upload mask for Replicate SDXL
+        # IMPORTANT: Invert mask - Replicate expects black=keep, white=inpaint
+        # Our mask is white=wall, black=rest, so we need to invert it
+        from PIL import Image, ImageOps
+        mask_image = Image.open(BytesIO(mask_bytes))
+        inverted_mask_image = ImageOps.invert(mask_image)
+        inverted_mask_bytes = io.BytesIO()
+        inverted_mask_image.save(inverted_mask_bytes, format='PNG')
+        inverted_mask_bytes.seek(0)
+
         mask_filename = f"masks/{uuid.uuid4()}.png"
         _, mask_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=mask_bytes,
+            file_data=inverted_mask_bytes.getvalue(),
             filename=mask_filename,
             content_type='image/png',
             expiration=7200

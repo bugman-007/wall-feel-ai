@@ -81,14 +81,14 @@ export default function CheckoutButton({
       {!showEmailInput ? (
         <button
           onClick={() => setShowEmailInput(true)}
-          className="w-full px-8 py-4 rounded-lg font-semibold text-white text-lg bg-blue-600 hover:bg-blue-700 transition-all duration-200 transform hover:scale-105"
+          className="w-full btn-primary text-lg"
         >
           Complete Order via Shopify
         </button>
       ) : (
         <>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
               Email Address
             </label>
             <input
@@ -96,7 +96,7 @@ export default function CheckoutButton({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-4 py-2 rounded-lg focus:outline-none transition-all input"
               required
             />
           </div>
@@ -104,35 +104,13 @@ export default function CheckoutButton({
           <button
             onClick={handleCheckout}
             disabled={isProcessing || !email}
-            className={`
-              w-full px-8 py-4 rounded-lg font-semibold text-white text-lg
-              transition-all duration-200
-              ${isProcessing || !email
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105'
-              }
-            `}
+            className={`w-full px-8 py-4 rounded-lg font-semibold text-lg transition-all duration-200 btn-primary ${isProcessing || !email ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {isProcessing ? (
               <span className="flex items-center justify-center space-x-2">
-                <svg
-                  className="animate-spin h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
+                <svg className="animate-spin h-5 w-5" style={{ color: 'var(--text-primary)' }} fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
                 <span>Creating Order...</span>
               </span>
@@ -144,8 +122,8 @@ export default function CheckoutButton({
       )}
 
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+        <div className="p-3 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
+          <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{error}</p>
         </div>
       )}
     </div>
