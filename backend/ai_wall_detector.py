@@ -49,30 +49,41 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
 
-        # Prompt for wall detection - requests FULL wall rectangle (Issue 1 fix - REVISED)
+        # Prompt for wall detection - quadrilateral bounding box for perspective-accurate walls
         prompt = """You are a wall detection AI from input image.
 
         INPUT:
         room image that contains one or more walls
 
         CRITICAL RULES:
-        1. most of case, the main wall is placed on center of the image, and has largest area in the image
-        2. the main wall's all 4 corners are visible
-        3. the segmentation MUST contains full wall, and can be a RECTANGLE, parallelogram, circle, trapezoid, etc.
-        4. the main wall can behind of some furniture, TV, pictures, etc. must contain/include those areas also
-        5. ignore all furniture, TV, pictures, things etc in front of wall
+        1. The main wall is usually centered and has the largest area in the image
+        2. All 4 corners of the main wall must be visible or estimable
+        3. Walls are rarely perfect rectangles - they appear as trapezoids or parallelograms due to perspective
+        4. Include wall areas behind furniture, TV, pictures (imagine the wall continues behind objects)
+        5. Ignore furniture and objects in front of the wall - detect the wall surface itself
 
         EXPECTED OUTPUT:
-        you should find the main wall and return only valid JSON(no markdown):
+        Return ONLY valid JSON (no markdown, no code blocks):
         {
-                    "wall_detected": true,
-                    "wall_description": "Full back wall",
-                    "bounding_box": {"x": 0, "y": 0, "width": 890, "height": 480},
-                    "segmentation": [[0,0], [890,0], [890,480], [0,480]],
-                    "confidence": 0.95
+            "wall_detected": true,
+            "wall_description": "Full back wall with perspective distortion",
+            "bounding_box": {
+                "top_left": {"x": 120, "y": 80},
+                "top_right": {"x": 780, "y": 95},
+                "bottom_right": {"x": 750, "y": 520},
+                "bottom_left": {"x": 150, "y": 510}
+            },
+            "segmentation": [[120,80], [780,95], [750,520], [150,510]],
+            "confidence": 0.95
         }
 
-        If no wall visible: {"wall_detected": false, "reason": "no clear wall"}
+        The segmentation polygon MUST match the 4 bounding box corners in order:
+        - segmentation[0] = top_left
+        - segmentation[1] = top_right
+        - segmentation[2] = bottom_right
+        - segmentation[3] = bottom_left
+
+        If no wall visible: {"wall_detected": false, "reason": "no clear wall visible"}
         """
 
         # Create image part for Gemini and get dimensions
@@ -108,23 +119,43 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
                 bbox = result.get("bounding_box", {})
                 segmentation = result.get("segmentation", [])
 
-                # Calculate area (normalized 0-1) - Issue 5 fix
-                width = bbox.get("width", 0)
-                height = bbox.get("height", 0)
-                # Use actual image dimensions instead of hardcoded 1000x1000
-                area = (width * height) / (image_width * image_height) if image_width and image_height else 0.5
+                # Extract 4 corner points from quadrilateral bounding box
+                corners = {
+                    "top_left": bbox.get("top_left", {}),
+                    "top_right": bbox.get("top_right", {}),
+                    "bottom_right": bbox.get("bottom_right", {}),
+                    "bottom_left": bbox.get("bottom_left", {})
+                }
+
+                # Build bbox array from corners: [x1, y1, x2, y2, x3, y3, x4, y4]
+                bbox_array = [
+                    float(corners["top_left"].get("x", 0)),
+                    float(corners["top_left"].get("y", 0)),
+                    float(corners["top_right"].get("x", 0)),
+                    float(corners["top_right"].get("y", 0)),
+                    float(corners["bottom_right"].get("x", 0)),
+                    float(corners["bottom_right"].get("y", 0)),
+                    float(corners["bottom_left"].get("x", 0)),
+                    float(corners["bottom_left"].get("y", 0))
+                ]
+
+                # Calculate quadrilateral area using shoelace formula (normalized 0-1)
+                area = 0.5
+                if len(segmentation) >= 4:
+                    # Shoelace formula for quadrilateral area
+                    x1, y1 = segmentation[0]
+                    x2, y2 = segmentation[1]
+                    x3, y3 = segmentation[2]
+                    x4, y4 = segmentation[3]
+                    quad_area = 0.5 * abs(x1*y2 + x2*y3 + x3*y4 + x4*y1 - y1*x2 - y2*x3 - y3*x4 - y4*x1)
+                    area = quad_area / (image_width * image_height) if image_width and image_height else 0.5
 
                 return {
                     "success": True,
                     "masks": [{
                         "id": "wall-1",
                         "area": area,
-                        "bbox": [
-                            float(bbox.get("x", 0)),
-                            float(bbox.get("y", 0)),
-                            float(width),
-                            float(height)
-                        ],
+                        "bbox": bbox_array,
                         "segmentation": segmentation,
                         "confidence": result.get("confidence", 0.8),
                         "description": result.get("wall_description", "Main wall")
