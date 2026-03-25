@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 
 interface Point {
@@ -15,10 +15,15 @@ interface BoundingBox {
   height: number
 }
 
+interface ImageDimensions {
+  width: number
+  height: number
+}
+
 interface WallDetectionStepProps {
   imageUrl: string
-  onWallDetected: (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual') => void
-  onSkip: () => void
+  onWallDetected: (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual', originalDimensions: ImageDimensions) => void
+  onSkip: (originalDimensions?: ImageDimensions) => void
 }
 
 export default function WallDetectionStep({
@@ -31,10 +36,54 @@ export default function WallDetectionStep({
   const [points, setPoints] = useState<Point[]>([])
   const [isDragging, setIsDragging] = useState<number | null>(null)
   const [hasUserModified, setHasUserModified] = useState(false)
+  const [originalDimensions, setOriginalDimensions] = useState<ImageDimensions>({ width: 0, height: 0 })
+  const [displayDimensions, setDisplayDimensions] = useState<ImageDimensions>({ width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
+
+  // Handle image load to get original dimensions
+  const handleImageLoad = useCallback(() => {
+    if (imageRef.current) {
+      const img = imageRef.current
+      setOriginalDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      })
+      // Update display dimensions after image renders
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          setDisplayDimensions({
+            width: containerRef.current.offsetWidth,
+            height: containerRef.current.offsetHeight
+          })
+        }
+      })
+    }
+  }, [])
+
+  // Update display dimensions on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (containerRef.current) {
+        setDisplayDimensions({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight
+        })
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Handle auto-detect
   const handleAutoDetect = async () => {
+    // Validate dimensions are ready BEFORE making API call
+    if (displayDimensions.width === 0 || originalDimensions.width === 0) {
+      setDetectError('Image is still loading. Please wait a moment and try again.')
+      setIsDetecting(false)
+      return
+    }
+
     setIsDetecting(true)
     setDetectError(null)
     setPoints([])
@@ -59,8 +108,14 @@ export default function WallDetectionStep({
       const data = await response.json()
 
       if (data.success && data.wall && data.wall.segmentation) {
-        // Convert backend segmentation to points
-        setPoints(data.wall.segmentation.map((p: number[]) => ({ x: p[0], y: p[1] })))
+        // Convert backend segmentation to points (already in original image coordinates)
+        // Scale to display coordinates for UI
+        const scaleX = displayDimensions.width / originalDimensions.width
+        const scaleY = displayDimensions.height / originalDimensions.height
+        setPoints(data.wall.segmentation.map((p: number[]) => ({
+          x: p[0] * scaleX,
+          y: p[1] * scaleY
+        })))
       } else {
         setDetectError('AI could not detect a wall. Please try manual selection.')
       }
@@ -118,12 +173,29 @@ export default function WallDetectionStep({
     }
   }
 
-  // Handle confirm
+  // Handle confirm - scale points from display coordinates to original image coordinates
   const handleConfirm = () => {
     if (points.length !== 4) return
-    const boundingBox = getBoundingBox(points)
-    const segmentation: number[][] = points.map(p => [p.x, p.y])
-    onWallDetected(segmentation, boundingBox, hasUserModified ? 'manual' : 'auto')
+
+    // Calculate scale factors
+    const scaleX = originalDimensions.width / displayDimensions.width
+    const scaleY = originalDimensions.height / displayDimensions.height
+
+    // Scale points to original image coordinates
+    const scaledSegmentation: number[][] = points.map(p => [
+      Math.round(p.x * scaleX),
+      Math.round(p.y * scaleY)
+    ])
+
+    // Calculate bounding box from scaled points
+    const scaledBoundingBox: BoundingBox = {
+      x: Math.round(Math.min(...points.map(p => p.x)) * scaleX),
+      y: Math.round(Math.min(...points.map(p => p.y)) * scaleY),
+      width: Math.round((Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x))) * scaleX),
+      height: Math.round((Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y))) * scaleY)
+    }
+
+    onWallDetected(scaledSegmentation, scaledBoundingBox, hasUserModified ? 'manual' : 'auto', originalDimensions)
   }
 
   // Handle reset
@@ -135,8 +207,13 @@ export default function WallDetectionStep({
 
   // Auto-detect on mount
   useEffect(() => {
-    handleAutoDetect()
-  }, [])
+    // Wait for image to load before auto-detecting
+    if (originalDimensions.width > 0 && originalDimensions.height > 0 &&
+        displayDimensions.width > 0 && displayDimensions.height > 0) {
+      handleAutoDetect()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originalDimensions, displayDimensions])
 
   // Get polygon points string for SVG
   const polygonPoints = points.length > 0 ? points.map(p => `${p.x},${p.y}`).join(' ') : ''
@@ -177,6 +254,7 @@ export default function WallDetectionStep({
           >
             {/* Background Image */}
             <Image
+              ref={imageRef}
               src={imageUrl}
               alt="Select wall area"
               width={800}
@@ -184,6 +262,7 @@ export default function WallDetectionStep({
               className="w-full h-auto"
               unoptimized
               draggable={false}
+              onLoad={handleImageLoad}
             />
 
             {/* Overlay and Selection SVG */}
@@ -224,6 +303,10 @@ export default function WallDetectionStep({
                 <>
                   {points.map((_, i) => {
                     const nextI = (i + 1) % points.length
+                    // Skip rendering if points contain NaN
+                    if (isNaN(points[i].x) || isNaN(points[i].y) || isNaN(points[nextI].x) || isNaN(points[nextI].y)) {
+                      return null
+                    }
                     return (
                       <line
                         key={`line-${i}`}
@@ -241,19 +324,23 @@ export default function WallDetectionStep({
               )}
 
               {/* Corner points (drag handles) - pointer events enabled */}
-              {points.map((point, index) => (
-                <circle
-                  key={`point-${index}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={10}
-                  fill="white"
-                  stroke="#3b82f6"
-                  strokeWidth={3}
-                  style={{ cursor: 'move' }}
-                  onMouseDown={(e) => handlePointMouseDown(e, index)}
-                />
-              ))}
+              {points.map((point, index) => {
+                // Skip rendering if point contains NaN
+                if (isNaN(point.x) || isNaN(point.y)) return null
+                return (
+                  <circle
+                    key={`point-${index}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r={10}
+                    fill="white"
+                    stroke="#3b82f6"
+                    strokeWidth={3}
+                    style={{ cursor: 'move' }}
+                    onMouseDown={(e) => handlePointMouseDown(e, index)}
+                  />
+                )
+              })}
             </svg>
           </div>
 
@@ -309,7 +396,7 @@ export default function WallDetectionStep({
       {/* Skip option */}
       <div className="text-center mt-6">
         <button
-          onClick={onSkip}
+          onClick={() => onSkip(originalDimensions)}
           className="text-sm underline transition-colors"
           style={{ color: 'var(--text-muted)' }}
           onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
