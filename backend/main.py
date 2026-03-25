@@ -301,9 +301,20 @@ async def ai_detect_wall(request: AIWallDetectRequest):
 
         if result and result.get("success"):
             logger.info(f"AI wall detection successful using {result.get('provider')}")
+            # Convert masks[0] to wall object for frontend
+            wall_mask = result.get("masks", [{}])[0] if result.get("masks") else {}
             return {
-                **result,
-                "processing_time": 3.5,  # Approximate AI processing time
+                "success": True,
+                "wall": {
+                    "id": wall_mask.get("id", "wall-1"),
+                    "area": wall_mask.get("area", 0.35),
+                    "bbox": wall_mask.get("bbox", [0, 0, 500, 400]),
+                    "segmentation": wall_mask.get("segmentation", []),
+                    "description": wall_mask.get("description", "Main wall"),
+                    "confidence": wall_mask.get("confidence", 0.8)
+                },
+                "provider": result.get("provider", "gemini"),
+                "processing_time": 3.5
             }
         else:
             # Fall back to mock data
@@ -375,15 +386,19 @@ class ApplyWallpaperRequest(BaseModel):
 
 
 class DirectPreviewRequest(BaseModel):
-    """Request for direct wallpaper preview generation without wall mask"""
+    """Request for direct wallpaper preview generation with optional manual segmentation"""
     image_url: str
     wallpaper_id: str
+    segmentation: Optional[List[List[float]]] = None  # Manual segmentation points [[x1,y1], [x2,y2], ...]
+    source: Optional[str] = None  # "auto" or "manual"
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
-                "wallpaper_id": "floral-001"
+                "wallpaper_id": "floral-001",
+                "segmentation": [[100, 80], [700, 80], [700, 530], [100, 530]],
+                "source": "manual"
             }
         }
     }
@@ -478,12 +493,16 @@ async def ai_generate_preview(request: DirectPreviewRequest):
     3. AI composites both images with prompt "apply wallpaper to wall"
     4. Returns final preview image
 
-    No wall mask needed - AI handles everything!
+    Optional manual segmentation:
+    - If segmentation is provided (from manual selection or auto-detect), it will be used
+    - If no segmentation, AI will detect the wall automatically
 
     Args:
         request: {
             image_url: string (room photo),
-            wallpaper_id: string
+            wallpaper_id: string,
+            segmentation: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] (optional),
+            source: "auto" | "manual" (optional)
         }
 
     Returns:
@@ -491,12 +510,14 @@ async def ai_generate_preview(request: DirectPreviewRequest):
             "success": true,
             "preview_url": "https://...",
             "description": "Wallpaper applied to main wall",
-            "provider": "openai" | "gemini",
+            "provider": "openai" | "gemini" | "stability-sdxl",
             "processing_time": 5.0
         }
     """
     try:
         logger.info(f"AI preview generation requested for wallpaper: {request.wallpaper_id}")
+        if request.segmentation:
+            logger.info(f"Using provided segmentation ({request.source or 'unknown'} source)")
 
         # Get wallpaper URL from catalog
         catalog_path = Path(__file__).parent / "catalog.json"
@@ -509,10 +530,11 @@ async def ai_generate_preview(request: DirectPreviewRequest):
 
         wallpaper_url = wallpaper['full_url']
 
-        # Use AI to generate preview
+        # Use AI to generate preview, passing segmentation if provided
         result = generate_wallpaper_preview_ai(
             image_url=request.image_url,
-            wallpaper_url=wallpaper_url
+            wallpaper_url=wallpaper_url,
+            segmentation=request.segmentation  # Pass manual/auto segmentation if provided
         )
 
         if result and result.get("success"):

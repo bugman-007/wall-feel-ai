@@ -49,32 +49,30 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
         base64_image = encode_image_to_base64(image_url)
 
         # Prompt for wall detection - requests FULL wall rectangle (Issue 1 fix - REVISED)
-        prompt = """You are a wall detection AI for wallpaper application.
+        prompt = """You are a wall detection AI from input image.
 
-TASK: Find the MAIN wall and return its FULL rectangular boundary.
+        INPUT:
+        room image that contains one or more walls
 
-CRITICAL RULES:
-1. The segmentation MUST be a RECTANGLE (4 corners only)
-2. The rectangle must span WALL-TO-WALL (left corner to right corner)
-3. The rectangle must span FLOOR-TO-CEILING
-4. IGNORE all furniture, TV, pictures, shelves in front of the wall
-5. The wall EXISTS BEHIND furniture - include those areas
+        CRITICAL RULES:
+        1. most of case, the main wall is placed on center of the image, and has largest area in the image
+        2. the main wall's all 4 corners are visible
+        3. the segmentation MUST contains full wall, and can be a RECTANGLE, parallelogram, circle, trapezoid, etc.
+        4. the main wall can behind of some furniture, TV, pictures, etc. must contain/include those areas also
+        5. ignore all furniture, TV, pictures, things etc in front of wall
 
-EXAMPLE - If wall is 890x480 pixels:
-- CORRECT: segmentation [[0,0], [890,0], [890,480], [0,480]] (full rectangle)
-- WRONG: segmentation that cuts around TV or furniture
+        EXPECTED OUTPUT:
+        you should find the main wall and return only valid JSON(no markdown):
+        {
+                    "wall_detected": true,
+                    "wall_description": "Full back wall",
+                    "bounding_box": {"x": 0, "y": 0, "width": 890, "height": 480},
+                    "segmentation": [[0,0], [890,0], [890,480], [0,480]],
+                    "confidence": 0.95
+        }
 
-Return ONLY valid JSON (no markdown):
-{
-    "wall_detected": true,
-    "wall_description": "Full back wall",
-    "bounding_box": {"x": 0, "y": 0, "width": 890, "height": 480},
-    "segmentation": [[0,0], [890,0], [890,480], [0,480]],
-    "confidence": 0.95
-}
-
-If no wall visible: {"wall_detected": false, "reason": "no clear wall"}
-"""
+        If no wall visible: {"wall_detected": false, "reason": "no clear wall"}
+        """
 
         # Create image part for Gemini and get dimensions
         image_data = base64.b64decode(base64_image)
@@ -185,7 +183,7 @@ def composite_wallpaper_onto_wall(
     segmentation: list
 ) -> bytes:
     """
-    Composite wallpaper onto wall using OpenCV perspective warp.
+    Composite wallpaper onto wall using OpenCV.
     Returns composited image for Stability AI to refine lighting only.
 
     Issue 2 fix: Pass actual wallpaper image instead of just URL in text prompt.
@@ -206,53 +204,36 @@ def composite_wallpaper_onto_wall(
 
     h, w = room_img.shape[:2]
 
-    # Resize wallpaper to room dimensions for tiling
-    wallpaper_resized = cv2.resize(wallpaper_img, (w, h))
+    # --- TILE WALLPAPER PATTERN ---
+    # Resize wallpaper to a reasonable tile size (e.g., 512x512)
+    wallpaper_resized = cv2.resize(wallpaper_img, (512, 512))
 
-    # --- PERSPECTIVE WARP ---
-    # Get wall quad from segmentation (4 corners)
-    pts = np.array(segmentation, dtype=np.float32)
+    # Tile the wallpaper to cover the entire room dimensions
+    # This creates a seamless pattern that covers the whole image
+    tiled_wallpaper = np.tile(wallpaper_resized, (
+        (h + 511) // 512,  # Number of tiles vertically
+        (w + 511) // 512,  # Number of tiles horizontally
+        1
+    ))[:h, :w]  # Crop to exact room dimensions
 
-    if len(pts) == 4:
-        # Source: wallpaper corners (full image)
-        src_pts = np.array([
-            [0, 0],
-            [w, 0],
-            [w, h],
-            [0, h]
-        ], dtype=np.float32)
-
-        # Destination: wall quad corners from Gemini
-        dst_pts = pts
-
-        # Compute perspective transform
-        M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-        warped_wallpaper = cv2.warpPerspective(wallpaper_resized, M, (w, h))
-    else:
-        # Fallback: just resize if segmentation is invalid
-        logger.warning(f"Invalid segmentation points ({len(pts)}), using fallback")
-        warped_wallpaper = wallpaper_resized
-
-    # --- LIGHTING BLEND ---
-    # Extract original wall luminance to preserve room lighting
-    wall_region = cv2.bitwise_and(room_img, room_img, mask=mask_img)
-    gray = cv2.cvtColor(wall_region, cv2.COLOR_BGR2GRAY)
-    luminance = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR).astype(float) / 255.0
-
-    # Blend wallpaper with luminance (80% wallpaper, 20% luminance for realism)
-    wp_float = warped_wallpaper.astype(float) / 255.0
-    blended = np.clip(wp_float * 0.80 + luminance * 0.20, 0, 1)
-    blended = (blended * 255).astype(np.uint8)
-
-    # --- FEATHER MASK EDGES ---
-    mask_blurred = cv2.GaussianBlur(mask_img, (31, 31), 0)
-    alpha = mask_blurred.astype(float) / 255.0
+    # --- APPLY WALLPAPER TO WALL REGION USING MASK ---
+    # The mask defines the exact wall area (white = apply wallpaper, black = keep original)
+    # Normalize mask to 0-1 range for alpha blending
+    alpha = mask_img.astype(float) / 255.0
     alpha_3ch = np.stack([alpha, alpha, alpha], axis=2)
 
-    # --- COMPOSITE onto room ---
+    # Blend tiled wallpaper with original room
     room_float = room_img.astype(float)
-    blended_float = blended.astype(float)
-    composited = (blended_float * alpha_3ch + room_float * (1 - alpha_3ch)).astype(np.uint8)
+    wp_float = tiled_wallpaper.astype(float)
+    composited = (wp_float * alpha_3ch + room_float * (1 - alpha_3ch)).astype(np.uint8)
+
+    # --- FEATHER MASK EDGES for smooth blending ---
+    mask_blurred = cv2.GaussianBlur(mask_img, (31, 31), 0)
+    alpha_blurred = mask_blurred.astype(float) / 255.0
+    alpha_3ch_blurred = np.stack([alpha_blurred, alpha_blurred, alpha_blurred], axis=2)
+
+    # Re-apply with feathered edges
+    composited = (wp_float * alpha_3ch_blurred + room_float * (1 - alpha_3ch_blurred)).astype(np.uint8)
 
     # Return as PNG bytes
     _, buf = cv2.imencode('.png', composited)
@@ -278,7 +259,7 @@ def generate_preview_with_stability(
         Dict with preview_url and metadata, or None if failed
     """
     try:
-        from stability_client import stability_client
+        from replicate_client import replicate_client
         import base64
         import httpx
         from PIL import Image
@@ -286,8 +267,8 @@ def generate_preview_with_stability(
         import uuid
         from r2_client import r2_client
 
-        if not stability_client.is_configured():
-            logger.warning("Stability AI not configured")
+        if not replicate_client.is_configured():
+            logger.warning("Replicate not configured")
             return None
 
         # Download wallpaper to get dimensions
@@ -313,7 +294,7 @@ def generate_preview_with_stability(
         logger.info(f"Mask uploaded: {public_url} (using presigned URL for AI access)")
 
         # Call Stability AI inpainting with presigned URL
-        result = stability_client.generate_inpainting(
+        result = replicate_client.generate_inpainting(
             image_url=image_url,
             mask_url=presigned_url,
             prompt=prompt,
@@ -351,13 +332,14 @@ def generate_preview_with_stability(
 
 def generate_wallpaper_preview_gemini(
     image_url: str,
-    wallpaper_url: str
+    wallpaper_url: str,
+    segmentation: Optional[List[List[float]]] = None  # Manual or auto-detect segmentation
 ) -> Optional[Dict[str, Any]]:
     """
     Generate wallpaper preview using Gemini + OpenCV compositing + Stability AI refinement
 
     Updated Flow (Issue 2 & 3 fix):
-    1. Gemini detects wall and returns segmentation
+    1. Gemini detects wall and returns segmentation (OR use provided segmentation)
     2. Create mask image from segmentation
     3. OpenCV composites wallpaper onto wall with perspective warp
     4. Stability AI refines lighting only (low strength=0.20)
@@ -365,6 +347,8 @@ def generate_wallpaper_preview_gemini(
     Args:
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
+        segmentation: Optional pre-computed segmentation points [[x1,y1], [x2,y2], ...]
+                     If provided, skips Gemini wall detection
 
     Returns:
         Dict with preview_url and metadata
@@ -376,22 +360,26 @@ def generate_wallpaper_preview_gemini(
         import uuid
         from r2_client import r2_client
 
-        # Step 1: Gemini detects wall
-        logger.info("Step 1: Detecting wall with Gemini 2.0 Flash...")
-        wall_result = detect_wall_with_gemini(image_url)
+        # Step 1: Use provided segmentation OR Gemini detects wall
+        if segmentation:
+            logger.info("Step 1: Using provided segmentation (manual/auto)")
+            wall_result = None
+        else:
+            logger.info("Step 1: Detecting wall with Gemini 2.0 Flash...")
+            wall_result = detect_wall_with_gemini(image_url)
 
-        if not wall_result or not wall_result.get("masks"):
-            logger.warning("Gemini wall detection failed")
-            return None
+            if not wall_result or not wall_result.get("masks"):
+                logger.warning("Gemini wall detection failed")
+                return None
 
-        wall_mask = wall_result["masks"][0]
-        segmentation = wall_mask.get("segmentation", [])
+            wall_mask = wall_result["masks"][0]
+            segmentation = wall_mask.get("segmentation", [])
 
-        if not segmentation:
-            logger.warning("No segmentation data from Gemini")
-            return None
+            if not segmentation:
+                logger.warning("No segmentation data from Gemini")
+                return None
 
-        logger.info(f"Wall detected: {wall_mask.get('description')}")
+            logger.info(f"Wall detected: {wall_mask.get('description')}")
 
         # Get room image
         room_response = httpx.get(image_url, timeout=30)
@@ -448,10 +436,10 @@ Do not modify furniture, floor, ceiling, or any objects.
 Keep the exact wallpaper design unchanged.
 """
 
-        from stability_client import stability_client
+        from replicate_client import replicate_client
         import base64
 
-        result = stability_client.generate_inpainting(
+        result = replicate_client.generate_inpainting(
             image_url=composited_presigned_url,  # Use composited image, not original
             mask_url=mask_presigned_url,
             prompt=prompt,
@@ -516,7 +504,8 @@ def detect_wall_ai(image_url: str) -> Optional[Dict[str, Any]]:
 
 def generate_wallpaper_preview_ai(
     image_url: str,
-    wallpaper_url: str
+    wallpaper_url: str,
+    segmentation: Optional[List[List[float]]] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Generate wallpaper preview using Gemini + Stability AI
@@ -524,8 +513,9 @@ def generate_wallpaper_preview_ai(
     Args:
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
+        segmentation: Optional pre-computed segmentation points (manual or auto-detect)
 
     Returns:
         Dict with preview_url and metadata
     """
-    return generate_wallpaper_preview_gemini(image_url, wallpaper_url)
+    return generate_wallpaper_preview_gemini(image_url, wallpaper_url, segmentation)

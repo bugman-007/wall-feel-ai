@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
+import WallDetectionStep from './components/WallDetectionStep'
 import PreviewDisplay from './components/PreviewDisplay'
 import MeasurementsForm from './components/MeasurementsForm'
 import CheckoutButton from './components/CheckoutButton'
@@ -15,6 +16,13 @@ interface WallpaperDesign {
   thumbnail_url: string
   full_url: string
   description: string
+}
+
+interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export default function Home() {
@@ -36,6 +44,13 @@ export default function Home() {
     setSelectedWallpaper(design)
   }
 
+  const [wallSegmentation, setWallSegmentation] = useState<{
+    segmentation: number[][]
+    boundingBox: BoundingBox
+    source: 'auto' | 'manual'
+  } | null>(null)
+  const [showWallDetection, setShowWallDetection] = useState(false)
+
   const [previewData, setPreviewData] = useState<{
     originalUrl: string
     previewUrl: string
@@ -48,10 +63,36 @@ export default function Home() {
     price: number
   } | null>(null)
 
-  // Direct AI preview generation - no wall detection needed!
+  // Handle wall detection complete
+  const handleWallDetected = (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual') => {
+    setWallSegmentation({
+      segmentation,
+      boundingBox,
+      source
+    })
+    setShowWallDetection(false)
+  }
+
+  // Handle skip wall detection
+  const handleSkipWallDetection = () => {
+    // Use full image as fallback
+    setWallSegmentation({
+      segmentation: [[0, 0], [800, 0], [800, 600], [0, 600]],
+      boundingBox: { x: 0, y: 0, width: 800, height: 600 },
+      source: 'manual'
+    })
+    setShowWallDetection(false)
+  }
+
+  // Start wall detection step
+  const handleStartWallDetection = () => {
+    setShowWallDetection(true)
+  }
+
+  // Generate preview with wall segmentation
   const handleGeneratePreview = async () => {
-    if (!selectedWallpaper || !selectedImage?.uploadedUrl) {
-      setGenerateError('Please upload an image and select a wallpaper first')
+    if (!selectedWallpaper || !selectedImage?.uploadedUrl || !wallSegmentation) {
+      setGenerateError('Please upload an image, select a wallpaper, and detect the wall first')
       return
     }
 
@@ -67,7 +108,9 @@ export default function Home() {
         },
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
-          wallpaper_id: selectedWallpaper.id
+          wallpaper_id: selectedWallpaper.id,
+          segmentation: wallSegmentation.segmentation,
+          source: wallSegmentation.source
         })
       })
 
@@ -126,34 +169,91 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Generate Preview Button */}
-        {selectedImage && selectedWallpaper && !previewData && (
-          <div className="flex justify-center mb-12">
-            <button
-              onClick={handleGeneratePreview}
-              disabled={isGenerating}
-              className={`
-                px-8 py-4 rounded-lg font-semibold text-white text-lg
-                transition-all duration-200 transform
-                ${isGenerating
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95'
-                }
-              `}
-            >
-              {isGenerating ? (
-                <span className="flex items-center space-x-2">
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
+        {/* Step 3: Wall Detection */}
+        {selectedImage && selectedWallpaper && !wallSegmentation && !showWallDetection && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              3. Detect Wall Area
+            </h2>
+            <div className="flex justify-center">
+              <button
+                onClick={handleStartWallDetection}
+                className="px-8 py-4 rounded-lg font-semibold text-white text-lg bg-blue-600 hover:bg-blue-700 transition-all duration-200 transform hover:scale-105"
+              >
+                Detect Wall with AI
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Wall Detection Step */}
+        {showWallDetection && (
+          <div className="mb-12">
+            <WallDetectionStep
+              imageUrl={selectedImage!.uploadedUrl || selectedImage!.preview}
+              onWallDetected={handleWallDetected}
+              onSkip={handleSkipWallDetection}
+            />
+          </div>
+        )}
+
+        {/* Step 4: Generate Preview Button */}
+        {selectedImage && selectedWallpaper && wallSegmentation && !previewData && (
+          <div className="mb-12">
+            <div className="max-w-4xl mx-auto">
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
+                4. Generate Preview
+              </h2>
+
+              {/* Wall selection summary */}
+              <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                      Wall area selected ({wallSegmentation.source === 'auto' ? 'AI detected' : 'manually selected'})
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                      Dimensions: {wallSegmentation.boundingBox.width.toFixed(0)} x {wallSegmentation.boundingBox.height.toFixed(0)} pixels
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={handleStartWallDetection}
+                  className="px-6 py-3 rounded-lg font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Re-select Wall
+                </button>
+                <button
+                  onClick={handleGeneratePreview}
+                  disabled={isGenerating}
+                  className={`
+                    px-8 py-4 rounded-lg font-semibold text-white text-lg
+                    transition-all duration-200 transform
+                    ${isGenerating
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95'
+                    }
+                  `}
+                >
+                  {isGenerating ? (
+                    <span className="flex items-center space-x-2">
+                      <svg
+                        className="animate-spin h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
                       strokeWidth="4"
                     />
                     <path
@@ -169,7 +269,9 @@ export default function Home() {
               )}
             </button>
           </div>
-        )}
+        </div>
+      </div>
+    )}
 
         {/* Generation Error */}
         {generateError && (
