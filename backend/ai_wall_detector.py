@@ -3,6 +3,7 @@ AI Wall Detector using Gemini 2.0 Flash + Stability AI SDXL
 For automatic wall detection and wallpaper inpainting
 """
 
+import os
 import logging
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
