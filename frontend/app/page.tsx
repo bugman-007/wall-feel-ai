@@ -65,7 +65,7 @@ export default function Home() {
   } | null>(null)
 
   // Handle wall detection complete
-  const handleWallDetected = (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual') => {
+  const handleWallDetected = (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual', originalDimensions?: { width: number; height: number }) => {
     setWallSegmentation({
       segmentation,
       boundingBox,
@@ -74,12 +74,14 @@ export default function Home() {
     setShowWallDetection(false)
   }
 
-  // Handle skip wall detection
-  const handleSkipWallDetection = () => {
-    // Use full image as fallback
+  // Handle skip wall detection - uses full image dimensions
+  const handleSkipWallDetection = (originalDimensions?: { width: number; height: number }) => {
+    // Use full image as fallback - use original dimensions if available
+    const width = originalDimensions?.width || 1920
+    const height = originalDimensions?.height || 1080
     setWallSegmentation({
-      segmentation: [[0, 0], [800, 0], [800, 600], [0, 600]],
-      boundingBox: { x: 0, y: 0, width: 800, height: 600 },
+      segmentation: [[0, 0], [width, 0], [width, height], [0, height]],
+      boundingBox: { x: 0, y: 0, width, height },
       source: 'manual'
     })
     setShowWallDetection(false)

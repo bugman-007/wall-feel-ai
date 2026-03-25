@@ -44,7 +44,7 @@ def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Op
             return None
 
         genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
 
         # Download and encode image
         base64_image = encode_image_to_base64(image_url)
@@ -185,13 +185,12 @@ def composite_wallpaper_onto_wall(
 ) -> bytes:
     """
     Composite wallpaper onto wall using OpenCV.
-    Returns composited image for Stability AI to refine lighting only.
+    Direct application: wallpaper replaces wall region exactly (no blending, no feathering).
 
-    Issue 2 fix: Pass actual wallpaper image instead of just URL in text prompt.
+    The mask defines the wall area: white = apply wallpaper, black = keep original room.
     """
     import cv2
     import numpy as np
-    from PIL import Image
     from io import BytesIO
 
     # Load images
@@ -218,23 +217,15 @@ def composite_wallpaper_onto_wall(
     ))[:h, :w]  # Crop to exact room dimensions
 
     # --- APPLY WALLPAPER TO WALL REGION USING MASK ---
-    # The mask defines the exact wall area (white = apply wallpaper, black = keep original)
-    # Normalize mask to 0-1 range for alpha blending
-    alpha = mask_img.astype(float) / 255.0
-    alpha_3ch = np.stack([alpha, alpha, alpha], axis=2)
+    # Create 3-channel mask for color image operations
+    mask_3ch = np.stack([mask_img, mask_img, mask_img], axis=2)
 
-    # Blend tiled wallpaper with original room
-    room_float = room_img.astype(float)
-    wp_float = tiled_wallpaper.astype(float)
-    composited = (wp_float * alpha_3ch + room_float * (1 - alpha_3ch)).astype(np.uint8)
+    # Normalize mask to 0-1 range
+    mask_normalized = mask_3ch.astype(float) / 255.0
 
-    # --- FEATHER MASK EDGES for smooth blending ---
-    mask_blurred = cv2.GaussianBlur(mask_img, (31, 31), 0)
-    alpha_blurred = mask_blurred.astype(float) / 255.0
-    alpha_3ch_blurred = np.stack([alpha_blurred, alpha_blurred, alpha_blurred], axis=2)
-
-    # Re-apply with feathered edges
-    composited = (wp_float * alpha_3ch_blurred + room_float * (1 - alpha_3ch_blurred)).astype(np.uint8)
+    # Direct composite: wallpaper where mask is white, room where mask is black
+    # No blending, no feathering - clean edge application
+    composited = (tiled_wallpaper * mask_normalized + room_img * (1 - mask_normalized)).astype(np.uint8)
 
     # Return as PNG bytes
     _, buf = cv2.imencode('.png', composited)

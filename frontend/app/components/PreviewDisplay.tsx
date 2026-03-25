@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 
 interface PreviewDisplayProps {
@@ -16,6 +16,17 @@ export default function PreviewDisplay({
 }: PreviewDisplayProps) {
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Get aspect ratio from original image
+  useEffect(() => {
+    const img = document.createElement('img')
+    img.src = originalUrl
+    img.onload = () => {
+      setAspectRatio(img.naturalWidth / img.naturalHeight)
+    }
+  }, [originalUrl])
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault() // Prevent text selection
@@ -40,25 +51,33 @@ export default function PreviewDisplay({
     <div className="w-full max-w-4xl mx-auto">
       {/* Comparison Container */}
       <div
+        ref={containerRef}
         className="relative rounded-lg overflow-hidden cursor-col-resize select-none card"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Original Image (Background) */}
-        <div className="relative w-full aspect-[4/3] pointer-events-none">
+        {/* Original Image (Background) - maintains original aspect ratio */}
+        <div className={`relative w-full ${aspectRatio ? '' : 'aspect-[4/3]'} pointer-events-none`}>
           <Image
             src={originalUrl}
             alt="Original room"
             fill
-            className="object-cover"
+            className="object-contain"
             unoptimized
             draggable={false}
+            onLoad={(e) => {
+              const img = e.currentTarget
+              if (img.naturalWidth && img.naturalHeight) {
+                setAspectRatio(img.naturalWidth / img.naturalHeight)
+              }
+            }}
+            style={aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
           />
         </div>
 
-        {/* Preview Image (Overlay with clip) */}
+        {/* Preview Image (Overlay with clip) - same aspect ratio as original */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -69,9 +88,10 @@ export default function PreviewDisplay({
             src={previewUrl}
             alt="Preview with wallpaper"
             fill
-            className="object-cover"
+            className="object-contain"
             unoptimized
             draggable={false}
+            style={aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
           />
         </div>
 
