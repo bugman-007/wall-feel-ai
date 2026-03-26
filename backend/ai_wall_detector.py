@@ -5,7 +5,6 @@ Single unified multimodal model for wallpaper application
 
 import os
 import logging
-import io
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
@@ -34,8 +33,8 @@ def generate_wallpaper_preview_gemini(
         Dict with preview_url and metadata
     """
     try:
-        import google.generativeai as genai
-        from PIL import Image
+        from google import genai
+        from google.genai import types
         import httpx
 
         api_key = os.getenv("GEMINI_API_KEY")
@@ -43,22 +42,20 @@ def generate_wallpaper_preview_gemini(
             logger.error("Gemini API key not configured")
             return None
 
-        genai.configure(api_key=api_key)
-
-        # Use Gemini 3 Pro Image (Nano Banana) - the professional image editing model
-        model = genai.GenerativeModel('gemini-3-pro-image-preview')
+        # Create client with new API
+        client = genai.Client(api_key=api_key)
 
         # Download room image
         logger.info("Downloading room image...")
         room_response = httpx.get(image_url, timeout=30)
         room_response.raise_for_status()
-        room_image = Image.open(io.BytesIO(room_response.content))
+        room_image_bytes = room_response.content
 
         # Download wallpaper image
         logger.info("Downloading wallpaper reference...")
         wallpaper_response = httpx.get(wallpaper_url, timeout=30)
         wallpaper_response.raise_for_status()
-        wallpaper_image = Image.open(io.BytesIO(wallpaper_response.content))
+        wallpaper_image_bytes = wallpaper_response.content
 
         # Prompt for wallpaper application
         prompt = """Apply this wallpaper texture to all visible walls in the room photo.
@@ -78,49 +75,55 @@ The wallpaper image shows the exact pattern, color, and texture to apply.
         logger.info("Generating preview with Gemini 3 Pro Image...")
 
         # Generate with both images and prompt
-        response = model.generate_content([
-            prompt,
-            room_image,
-            wallpaper_image
-        ], generation_config=genai.GenerationConfig(
-            response_modalities=["IMAGE"]  # Request image output
-        ))
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-image-preview-v2',  # Use the flash image preview model
+            contents=[
+                prompt,
+                room_image_bytes,
+                wallpaper_image_bytes
+            ],
+            config=types.GenerateContentConfig(
+                response_modalities=['IMAGE']  # Request image output
+            )
+        )
+
+        logger.info(f"Gemini response: {response}")
 
         # Get the generated image
-        if response and len(response.candidates) > 0:
+        if response and hasattr(response, 'candidates') and response.candidates:
             candidate = response.candidates[0]
             if hasattr(candidate, 'content') and candidate.content:
-                # Extract image from response - Gemini returns inline_data (base64)
-                part = candidate.content.parts[0]
+                # Extract image from response
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    part = candidate.content.parts[0]
 
-                # Check for inline_data (base64 encoded image)
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    image_bytes = part.inline_data.data
+                    # Check for inline_data (base64 encoded image)
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        image_bytes = part.inline_data.data
 
-                    # Upload to R2 and get presigned URL
-                    from r2_client import r2_client
-                    import uuid
+                        # Upload to R2 and get presigned URL
+                        from r2_client import r2_client
+                        import uuid
 
-                    preview_filename = f"previews/{uuid.uuid4()}.png"
-                    _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
-                        file_data=image_bytes,
-                        filename=preview_filename,
-                        content_type='image/png',
-                        expiration=7200
-                    )
+                        preview_filename = f"previews/{uuid.uuid4()}.png"
+                        _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
+                            file_data=image_bytes,
+                            filename=preview_filename,
+                            content_type='image/png',
+                            expiration=7200
+                        )
 
-                    logger.info(f"Preview generated successfully")
+                        logger.info(f"Preview generated successfully")
 
-                    return {
-                        "success": True,
-                        "preview_url": preview_presigned_url,
-                        "provider": "gemini-3-pro-image",
-                        "model": "gemini-3-pro-image-preview",
-                        "description": "Wallpaper applied using Gemini Pro Image"
-                    }
+                        return {
+                            "success": True,
+                            "preview_url": preview_presigned_url,
+                            "provider": "gemini-3-pro-image",
+                            "model": "gemini-2.5-flash-image-preview-v2",
+                            "description": "Wallpaper applied using Gemini Pro Image"
+                        }
 
         logger.warning("Gemini Pro Image did not return a valid image")
-        logger.debug(f"Response: {response}")
         return None
 
     except Exception as e:
