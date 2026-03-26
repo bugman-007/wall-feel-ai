@@ -7,15 +7,50 @@ interface PreviewDisplayProps {
   originalUrl: string
   previewUrl: string
   onClose?: () => void
+  quality?: '1k' | '2k' | '4k' | '8k'
 }
 
 export default function PreviewDisplay({
   originalUrl,
   previewUrl,
-  onClose
+  onClose,
+  quality = '1k'
 }: PreviewDisplayProps) {
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    try {
+      setIsDownloading(true)
+
+      // Fetch the image as a blob via our backend proxy to avoid CORS issues
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/download-preview?url=${encodeURIComponent(previewUrl)}&quality=${quality}`)
+
+      if (!response.ok) {
+        throw new Error('Download failed')
+      }
+
+      const blob = await response.blob()
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `wallfeel-preview-${quality}.png`
+      document.body.appendChild(link)
+      link.click()
+
+      // Cleanup
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault() // Prevent text selection
@@ -90,21 +125,17 @@ export default function PreviewDisplay({
             clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
           }}
         >
-          <Image
-            src={previewUrl}
-            alt="Preview with wallpaper"
-            fill
-            className="object-contain"
-            style={{
-              width: imageDimensions?.width,
-              height: imageDimensions?.height,
-              maxWidth: '100%',
-              maxHeight: '100%'
-            }}
-            unoptimized
-            draggable={false}
-            sizes="100vw"
-          />
+          {imageDimensions && (
+            <Image
+              src={previewUrl}
+              alt="Preview with wallpaper"
+              width={imageDimensions.width}
+              height={imageDimensions.height}
+              className="object-contain"
+              unoptimized
+              draggable={false}
+            />
+          )}
         </div>
 
         {/* Slider Line */}
@@ -158,16 +189,39 @@ export default function PreviewDisplay({
       </div>
 
       {/* Action Buttons */}
-      {onClose && (
-        <div className="mt-6 flex justify-center">
+      <div className="mt-6 flex justify-center space-x-4">
+        {onClose && (
           <button
             onClick={onClose}
             className="btn-secondary"
           >
             Try Different Wallpaper
           </button>
-        </div>
-      )}
+        )}
+        <button
+          onClick={handleDownload}
+          disabled={isDownloading}
+          className="btn-primary flex items-center space-x-2"
+          title={`Download ${quality.toUpperCase()} quality image`}
+        >
+          {isDownloading ? (
+            <>
+              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span>Downloading...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>Download {quality.toUpperCase()}</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   )
 }

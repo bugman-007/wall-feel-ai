@@ -1,16 +1,19 @@
+import io
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 import os
 import json
 import uuid
 import asyncio
 import logging
+import httpx
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
-from ai_wall_detector import generate_wallpaper_preview_ai
-from typing import List, Dict, Any, Optional
+from ai_wall_detector import generate_wallpaper_preview_ai, QualityLevel
+from typing import List, Dict, Any, Optional, Literal
 import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
@@ -60,19 +63,46 @@ def health_check():
         "service": "wallfeel-api"
     }
 
+
+@app.get("/api/download-preview")
+async def download_preview(url: str, quality: str = "1k"):
+    """
+    Proxy endpoint to download preview image and avoid CORS issues.
+    Fetches the image from R2 and returns it with proper headers for download.
+
+    Args:
+        url: Presigned R2 URL of the preview image
+        quality: Quality level (1k, 2k, 4k, 8k) - used in filename
+    """
+    try:
+        # Fetch image from R2
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=30)
+            response.raise_for_status()
+
+            # Return with download headers (PNG format)
+            filename = f"wallfeel-preview-{quality.lower()}.png"
+            return StreamingResponse(
+                io.BytesIO(response.content),
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}"
+                }
+            )
+    except Exception as e:
+        logger.error(f"Download proxy error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to download image: {str(e)}")
+
 # Cache for catalog data (performance optimization)
 _catalog_cache: Optional[Dict] = None
 _catalog_cache_timestamp: float = 0
 _CATALOG_CACHE_TTL = 300  # 5 minutes cache TTL
 
 
-@app.get("/api/catalog")
-def get_catalog():
+def _get_catalog() -> Dict:
     """
-    Get wallpaper catalog
-    Returns list of available wallpaper designs
-
-    Performance: Catalog is cached for 5 minutes to reduce file I/O
+    Get wallpaper catalog with caching.
+    Used by both /api/catalog and /api/ai-generate-preview endpoints.
     """
     global _catalog_cache, _catalog_cache_timestamp
 
@@ -95,7 +125,19 @@ def get_catalog():
     except FileNotFoundError:
         return {"designs": []}
     except Exception as e:
-        return {"error": str(e), "designs": []}
+        logger.error(f"Error loading catalog: {e}")
+        return {"designs": []}
+
+
+@app.get("/api/catalog")
+def get_catalog():
+    """
+    Get wallpaper catalog
+    Returns list of available wallpaper designs
+
+    Performance: Catalog is cached for 5 minutes to reduce file I/O
+    """
+    return _get_catalog()
 
 @app.post("/api/upload")
 async def upload_image(file: UploadFile = File(...)):
@@ -110,7 +152,8 @@ async def upload_image(file: UploadFile = File(...)):
             "success": true,
             "url": "https://...",
             "filename": "...",
-            "size": 12345
+            "size": 12345,
+            "content_type": "image/jpeg"
         }
     """
     # Validate file type
@@ -144,6 +187,9 @@ async def upload_image(file: UploadFile = File(...)):
                 detail="Invalid image content: file does not match claimed type"
             )
 
+        # Determine actual MIME type from magic bytes
+        actual_content_type = 'image/jpeg' if is_jpeg else 'image/png'
+
         # Validate file size (10MB max)
         max_size = 10 * 1024 * 1024  # 10MB
         if file_size > max_size:
@@ -153,7 +199,7 @@ async def upload_image(file: UploadFile = File(...)):
             )
 
         # Generate unique filename
-        file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        file_extension = file.filename.split('.')[-1] if '.' in file.filename else ('jpg' if is_jpeg else 'png')
         unique_filename = f"uploads/{uuid.uuid4()}.{file_extension}"
 
         # Upload to R2
@@ -161,7 +207,7 @@ async def upload_image(file: UploadFile = File(...)):
             r2_client.upload_file(
                 file_data=file_content,
                 filename=unique_filename,
-                content_type=file.content_type
+                content_type=actual_content_type
             )
 
             # Generate presigned URL for AI access (private buckets)
@@ -170,13 +216,19 @@ async def upload_image(file: UploadFile = File(...)):
                 expiration=7200  # 2 hours
             )
 
+            # Cache the image bytes in memory to avoid re-download during preview generation
+            # Use the presigned URL as the cache key (same URL that will be passed to generate endpoint)
+            from ai_wall_detector import _cache_room_image
+            _cache_room_image(presigned_url, file_content)
+            logger.info(f"Room image cached for preview generation: {presigned_url}")
+
             return {
                 "success": True,
                 "url": presigned_url,
                 "public_url": f"https://pub-{r2_client.account_id}.r2.dev/{unique_filename}",
                 "filename": unique_filename,
                 "size": file_size,
-                "content_type": file.content_type
+                "content_type": actual_content_type
             }
 
         except Exception as e:
@@ -199,7 +251,7 @@ class DirectPreviewRequest(BaseModel):
     """Request for direct wallpaper preview generation"""
     image_url: str
     wallpaper_id: str
-    quality: str = "1k"  # Default to fastest: 1k, 2k, 4k, 8k
+    quality: Literal["1k", "2k", "4k", "8k"] = "1k"
 
     model_config = {
         "json_schema_extra": {
@@ -243,36 +295,61 @@ class CreateOrderRequest(BaseModel):
 @app.post("/api/ai-generate-preview")
 async def ai_generate_preview(request: DirectPreviewRequest):
     """
-    Generate wallpaper preview using Gemini 3 Pro Image (Nano Banana)
+    Generate wallpaper preview using Gemini 3.1 Flash Image
 
-    SIMPLIFIED 2-step flow:
+    Flow:
     1. User uploads room photo + selects wallpaper
-    2. Gemini Pro Image applies wallpaper to walls automatically
-    3. Returns final preview image
+    2. Gemini applies wallpaper to walls automatically
+    3. Returns final preview image with timing breakdown
 
-    No manual wall selection needed - AI handles everything.
+    Quality levels:
+    - 1k: Native 1K output (fastest, recommended for mobile) - 30-40 seconds
+    - 2k: Native 2K output (balanced quality/speed) - 35-45 seconds
+    - 4k: Native 4K output (high quality for desktop) - ~1 minute
+    - 8k: 4K native + local upscale (maximum quality, slowest) - > 1 minute
+
+    Actual generation time varies based on image complexity, network conditions, and server load.
 
     Args:
         request: {
-            image_url: string (room photo),
-            wallpaper_id: string
+            image_url: string (room photo presigned URL from /api/upload),
+            wallpaper_id: string (design ID from /api/catalog),
+            quality: "1k"|"2k"|"4k"|"8k" (default: "1k")
         }
 
     Returns:
+        On success:
         {
             "success": true,
             "preview_url": "https://...",
-            "provider": "gemini-3-pro-image",
-            "processing_time": 10.0
+            "provider": "google",
+            "model": "gemini-3.1-flash-image-preview",
+            "quality": "2k",
+            "native_size": "2K",
+            "output_dimensions": "2048x1536",
+            "timing": {
+                "download_time": 0.5,
+                "generation_time": 8.2,
+                "postprocess_time": 1.1,
+                "upload_time": 0.8,
+                "total_time": 10.6
+            }
+        }
+
+        On failure (fallback):
+        {
+            "success": false,
+            "fallback": true,
+            "preview_url": "https://...",
+            "provider": "mock",
+            "error": "Error details here"
         }
     """
     try:
-        logger.info(f"AI preview generation requested for wallpaper: {request.wallpaper_id}")
+        logger.info(f"AI preview generation requested: wallpaper={request.wallpaper_id}, quality={request.quality}")
 
-        # Get wallpaper URL from catalog
-        catalog_path = Path(__file__).parent / "catalog.json"
-        with open(catalog_path, 'r') as f:
-            catalog = json.load(f)
+        # Get wallpaper from catalog using shared cached loader
+        catalog = _get_catalog()
 
         wallpaper = next((w for w in catalog['designs'] if w['id'] == request.wallpaper_id), None)
         if not wallpaper:
@@ -280,41 +357,63 @@ async def ai_generate_preview(request: DirectPreviewRequest):
 
         wallpaper_url = wallpaper['full_url']
 
-        # Generate preview using Gemini Pro Image
-        result = generate_wallpaper_preview_ai(
+        # Get cached room image bytes (cached during upload)
+        from ai_wall_detector import _get_cached_room_image
+        room_image_bytes = _get_cached_room_image(request.image_url)
+
+        if room_image_bytes is not None:
+            logger.info(f"Room image found in cache, skipping download")
+
+        # Run blocking generation in thread pool to avoid blocking event loop
+        logger.info("Starting preview generation in worker thread...")
+        result = await asyncio.to_thread(
+            generate_wallpaper_preview_ai,
             image_url=request.image_url,
             wallpaper_url=wallpaper_url,
-            quality=request.quality
+            quality=request.quality,
+            room_image_bytes=room_image_bytes
         )
 
         if result and result.get("success"):
-            logger.info(f"Preview generated successfully using {result.get('provider')}")
-            return {
-                **result,
-                "processing_time": 10.0
-            }
+            logger.info(f"Preview generated: provider={result.get('provider')}, total_time={result.get('timing', {}).get('total_time', 'N/A')}s")
+            return result
         else:
-            # Fall back to mock
-            logger.warning("AI preview generation failed, using mock")
+            # Fall back to mock - return success=false to indicate this is NOT a real AI result
+            logger.warning("AI preview generation failed, using mock fallback")
             return {
-                "success": True,
+                "success": False,
+                "fallback": True,
                 "preview_url": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop",
-                "description": "Wallpaper applied (mock)",
+                "description": "Wallpaper applied (mock fallback - AI generation failed)",
                 "provider": "mock",
-                "processing_time": 0.5
+                "timing": {
+                    "download_time": 0,
+                    "generation_time": 0,
+                    "postprocess_time": 0,
+                    "upload_time": 0,
+                    "total_time": 0.1
+                }
             }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"AI preview generation error: {str(e)}", exc_info=True)
-        # Return mock on error
+        # Return mock on error with success=false
         return {
-            "success": True,
+            "success": False,
+            "fallback": True,
             "preview_url": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop",
             "description": f"Wallpaper applied (error fallback: {str(e)})",
             "provider": "mock",
-            "processing_time": 0.1
+            "error": str(e),
+            "timing": {
+                "download_time": 0,
+                "generation_time": 0,
+                "postprocess_time": 0,
+                "upload_time": 0,
+                "total_time": 0.1
+            }
         }
 
 

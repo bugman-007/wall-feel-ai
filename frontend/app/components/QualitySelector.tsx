@@ -8,10 +8,10 @@ interface QualityOption {
 }
 
 const QUALITY_OPTIONS: QualityOption[] = [
-  { id: '1k', name: '1K', resolution: '1024 x 1024', estimatedTime: '~5 seconds' },
-  { id: '2k', name: '2K', resolution: '2048 x 2048', estimatedTime: '~8 seconds' },
-  { id: '4k', name: '4K', resolution: '3840 x 3840', estimatedTime: '~12 seconds' },
-  { id: '8k', name: '8K', resolution: '7680 x 7680', estimatedTime: '~20 seconds' },
+  { id: '1k', name: '1K', resolution: '1024 x 1024', estimatedTime: '30-40 seconds' },
+  { id: '2k', name: '2K', resolution: '2048 x 2048', estimatedTime: '35-45 seconds' },
+  { id: '4k', name: '4K', resolution: '4096 x 4096', estimatedTime: '~1 minute' },
+  { id: '8k', name: '8K', resolution: '7680 x 7680', estimatedTime: '> 1 minute' },
 ]
 
 interface QualitySelectorProps {

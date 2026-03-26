@@ -148,7 +148,7 @@ export default function Home() {
                   AI will automatically detect walls and apply the wallpaper
                 </p>
                 <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-                  Selected quality: <strong>{selectedQuality.toUpperCase()}</strong> (Estimated time: ~{selectedQuality === '1k' ? '5' : selectedQuality === '2k' ? '8' : selectedQuality === '4k' ? '12' : '20'} seconds)
+                  Selected quality: <strong>{selectedQuality.toUpperCase()}</strong> (Estimated time: {selectedQuality === '1k' ? '30-40' : selectedQuality === '2k' ? '35-45' : selectedQuality === '4k' ? '~1 minute' : '> 1 minute'} seconds)
                 </p>
                 <button
                   onClick={handleGeneratePreview}
@@ -196,15 +196,8 @@ export default function Home() {
               originalUrl={selectedImage.preview}
               previewUrl={previewUrl}
               onClose={() => setPreviewUrl(null)}
+              quality={selectedQuality}
             />
-            <div className="flex justify-center space-x-4 mt-6">
-              <button
-                onClick={handleReset}
-                className="btn-secondary"
-              >
-                Try Another Wallpaper
-              </button>
-            </div>
           </section>
         )}
 
