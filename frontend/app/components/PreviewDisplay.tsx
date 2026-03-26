@@ -17,7 +17,7 @@ export default function PreviewDisplay({
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault() // Prevent text selection
     setIsDragging(true)
   }
@@ -26,12 +26,16 @@ export default function PreviewDisplay({
     setIsDragging(false)
   }
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!isDragging) return
     e.preventDefault() // Prevent text selection during drag
 
-    const rect = e.currentTarget.getBoundingClientRect()
-    const x = e.clientX - rect.left
+    const rect = (e.target as HTMLElement).closest('.comparison-container')?.getBoundingClientRect()
+    if (!rect) return
+
+    // Handle both mouse and touch events
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
+    const x = clientX - rect.left
     const percentage = (x / rect.width) * 100
     setSliderPosition(Math.max(0, Math.min(100, percentage)))
   }
@@ -40,11 +44,14 @@ export default function PreviewDisplay({
     <div className="w-full max-w-4xl mx-auto">
       {/* Comparison Container */}
       <div
-        className="relative rounded-lg overflow-hidden cursor-col-resize select-none card"
+        className="comparison-container relative rounded-lg overflow-hidden cursor-col-resize select-none card"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchMove={handleMouseMove}
+        onTouchStart={handleMouseDown}
+        onTouchEnd={handleMouseUp}
         style={{ minHeight: '400px' }}
       >
         {/* Original Image (Background) */}
