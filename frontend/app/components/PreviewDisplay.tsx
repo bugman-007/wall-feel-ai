@@ -45,9 +45,10 @@ export default function PreviewDisplay({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        style={{ minHeight: '400px' }}
       >
         {/* Original Image (Background) */}
-        <div className="relative w-full pointer-events-none" style={{ aspectRatio: 'auto' }}>
+        <div className="relative w-full h-[600px] pointer-events-none">
           <Image
             src={originalUrl}
             alt="Original room"

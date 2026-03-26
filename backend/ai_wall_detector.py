@@ -82,20 +82,20 @@ The wallpaper image shows the exact pattern, color, and texture to apply.
             prompt,
             room_image,
             wallpaper_image
-        ])
+        ], generation_config=genai.GenerationConfig(
+            response_modalities=["IMAGE"]  # Request image output
+        ))
 
         # Get the generated image
         if response and len(response.candidates) > 0:
             candidate = response.candidates[0]
             if hasattr(candidate, 'content') and candidate.content:
-                # Extract image from response
-                generated_image = candidate.content.parts[0].image
-                if generated_image:
-                    # Convert to bytes
-                    output = io.BytesIO()
-                    generated_image.save(output, format='PNG')
-                    output.seek(0)
-                    image_bytes = output.getvalue()
+                # Extract image from response - Gemini returns inline_data (base64)
+                part = candidate.content.parts[0]
+
+                # Check for inline_data (base64 encoded image)
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    image_bytes = part.inline_data.data
 
                     # Upload to R2 and get presigned URL
                     from r2_client import r2_client
@@ -120,6 +120,7 @@ The wallpaper image shows the exact pattern, color, and texture to apply.
                     }
 
         logger.warning("Gemini Pro Image did not return a valid image")
+        logger.debug(f"Response: {response}")
         return None
 
     except Exception as e:
