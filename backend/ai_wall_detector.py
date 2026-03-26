@@ -6,6 +6,7 @@ Single unified multimodal model for wallpaper application
 import io
 import os
 import logging
+import time
 from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
@@ -125,12 +126,19 @@ def generate_wallpaper_preview_gemini(
 
         client = genai.Client(api_key=api_key)
 
+        # Track timing for performance monitoring
+        start_time = time.time()
+        download_start = start_time
+
         # Download images
         logger.info("Downloading room image...")
         room_image_bytes = _download_image(image_url)
 
         logger.info("Downloading wallpaper reference...")
         wallpaper_image_bytes = _download_image(wallpaper_url)
+
+        download_elapsed = time.time() - download_start
+        logger.info(f"Image downloads completed in {download_elapsed:.2f}s")
 
         # Get original image dimensions for aspect ratio preservation
         from PIL import Image as PILImage
@@ -142,7 +150,9 @@ def generate_wallpaper_preview_gemini(
         room_image = types.Part.from_bytes(data=room_image_bytes, mime_type='image/jpeg')
         wallpaper_image = types.Part.from_bytes(data=wallpaper_image_bytes, mime_type='image/jpeg')
 
-        logger.info("Generating preview with Gemini 3 Pro Image...")
+        # Generate preview with explicit AFC disabled to prevent multi-round calls
+        generation_start = time.time()
+        logger.info("Generating preview with Gemini 3 Pro Image (AFC disabled)...")
 
         # Generate preview
         response = client.models.generate_content(
@@ -153,9 +163,17 @@ def generate_wallpaper_preview_gemini(
                 wallpaper_image
             ],
             config=types.GenerateContentConfig(
-                response_modalities=['IMAGE']
+                response_modalities=['IMAGE'],
+                toolConfig=types.ToolConfig(
+                    functionCallingConfig=types.FunctionCallingConfig(
+                        mode='NONE'  # Explicitly disable function calling to prevent AFC delays
+                    )
+                )
             )
         )
+
+        generation_elapsed = time.time() - generation_start
+        logger.info(f"Gemini generation completed in {generation_elapsed:.2f}s")
 
         # Extract generated image
         image_bytes = _extract_generated_image(response)
@@ -165,9 +183,13 @@ def generate_wallpaper_preview_gemini(
 
         # Resize generated image to match original aspect ratio and correct EXIF orientation
         logger.info(f"Resizing generated image to match original: {original_width}x{original_height}")
+        resize_start = time.time()
         image_bytes = _resize_and_correct_image(image_bytes, original_width, original_height)
+        resize_elapsed = time.time() - resize_start
+        logger.info(f"Image resize completed in {resize_elapsed:.2f}s")
 
         # Upload to R2
+        upload_start = time.time()
         preview_filename = f"previews/{uuid.uuid4()}.png"
         _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
             file_data=image_bytes,
@@ -175,8 +197,11 @@ def generate_wallpaper_preview_gemini(
             content_type='image/png',
             expiration=7200
         )
+        upload_elapsed = time.time() - upload_start
+        logger.info(f"R2 upload completed in {upload_elapsed:.2f}s")
 
-        logger.info("Preview generated successfully")
+        total_elapsed = time.time() - start_time
+        logger.info(f"Preview generated successfully in {total_elapsed:.2f}s total")
 
         return {
             "success": True,
