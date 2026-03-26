@@ -146,7 +146,7 @@ def generate_wallpaper_preview_gemini(
 
         # Generate preview
         response = client.models.generate_content(
-            model='gemini-3-pro-image-preview',
+            model='gemini-3.1-flash-image-preview',
             contents=[
                 prompt or DEFAULT_WALLPAPER_PROMPT,
                 room_image,
