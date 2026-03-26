@@ -74,13 +74,17 @@ The wallpaper image shows the exact pattern, color, and texture to apply.
 
         logger.info("Generating preview with Gemini 3 Pro Image...")
 
+        # Create Image objects from bytes (required by new API)
+        room_image = types.Image(image=room_image_bytes)
+        wallpaper_image = types.Image(image=wallpaper_image_bytes)
+
         # Generate with both images and prompt
         response = client.models.generate_content(
             model='gemini-2.5-flash-image-preview-v2',  # Use the flash image preview model
             contents=[
                 prompt,
-                room_image_bytes,
-                wallpaper_image_bytes
+                room_image,
+                wallpaper_image
             ],
             config=types.GenerateContentConfig(
                 response_modalities=['IMAGE']  # Request image output
