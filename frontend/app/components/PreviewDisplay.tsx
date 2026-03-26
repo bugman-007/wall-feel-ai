@@ -40,6 +40,7 @@ export default function PreviewDisplay({
     setSliderPosition(Math.max(0, Math.min(100, percentage)))
   }
 
+  
   return (
     <div className="w-full max-w-4xl mx-auto">
       {/* Comparison Container */}
