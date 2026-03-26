@@ -162,9 +162,9 @@ def generate_wallpaper_preview_gemini(
 
         # Generate preview with explicit AFC disabled to prevent multi-round calls
         generation_start = time.time()
-        logger.info("Generating preview with Gemini 3 Pro Image (AFC disabled)...")
+        logger.info("Generating preview with Gemini 3.1 Flash Image (AFC fully disabled)...")
 
-        # Generate preview
+        # Generate preview - using automatic_function_calling config (current SDK method)
         response = client.models.generate_content(
             model='gemini-3.1-flash-image-preview',
             contents=[
@@ -174,10 +174,8 @@ def generate_wallpaper_preview_gemini(
             ],
             config=types.GenerateContentConfig(
                 response_modalities=['IMAGE'],
-                toolConfig=types.ToolConfig(
-                    functionCallingConfig=types.FunctionCallingConfig(
-                        mode='NONE'  # Explicitly disable function calling to prevent AFC delays
-                    )
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True  # This is the key line that actually works in current SDK
                 )
             )
         )
