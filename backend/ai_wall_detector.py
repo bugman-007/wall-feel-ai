@@ -1,13 +1,12 @@
 """
-AI Wall Detector using Gemini 2.0 Flash + Replicate SDXL
-For automatic wall detection and wallpaper inpainting
+AI Wallpaper Preview Generator using Gemini 3 Pro Image (Nano Banana)
+Single unified multimodal model for wallpaper application
 """
 
 import os
-import base64
 import logging
 import io
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,344 +14,112 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def encode_image_to_base64(image_url: str) -> str:
-    """Download image from URL and encode to base64"""
-    import httpx
-
-    response = httpx.get(image_url, timeout=30)
-    response.raise_for_status()
-    return base64.b64encode(response.content).decode('utf-8')
-
-
-def detect_wall_with_gemini(image_url: str, api_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """
-    Use Google Gemini 2.0 Flash to detect the main wall in a room photo
-
-    Args:
-        image_url: URL of the room image
-        api_key: Google API key (falls back to env var)
-
-    Returns:
-        Wall mask data with segmentation polygon, or None if failed
-    """
-    try:
-        import google.generativeai as genai
-
-        key = api_key or os.getenv("GEMINI_API_KEY")
-        if not key:
-            logger.warning("Gemini API key not configured")
-            return None
-
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-3-flash-preview')
-
-        # Download and encode image
-        base64_image = encode_image_to_base64(image_url)
-
-        # Prompt for wall detection - quadrilateral bounding box for perspective-accurate walls
-        prompt = """You are a wall detection AI from input image.
-
-        INPUT:
-        room image that contains one or more walls
-
-        CRITICAL RULES:
-        1. The main wall is usually centered and has the largest area in the image
-        2. All 4 corners of the main wall must be visible or estimable
-        3. Walls are rarely perfect rectangles - they appear as trapezoids or parallelograms due to perspective
-        4. Include wall areas behind furniture, TV, pictures (imagine the wall continues behind objects)
-        5. Ignore furniture and objects in front of the wall - detect the wall surface itself
-
-        EXPECTED OUTPUT:
-        Return ONLY valid JSON (no markdown, no code blocks):
-        {
-            "wall_detected": true,
-            "wall_description": "Full back wall with perspective distortion",
-            "bounding_box": {
-                "top_left": {"x": 120, "y": 80},
-                "top_right": {"x": 780, "y": 95},
-                "bottom_right": {"x": 750, "y": 520},
-                "bottom_left": {"x": 150, "y": 510}
-            },
-            "segmentation": [[120,80], [780,95], [750,520], [150,510]],
-            "confidence": 0.95
-        }
-
-        The segmentation polygon MUST match the 4 bounding box corners in order:
-        - segmentation[0] = top_left
-        - segmentation[1] = top_right
-        - segmentation[2] = bottom_right
-        - segmentation[3] = bottom_left
-
-        If no wall visible: {"wall_detected": false, "reason": "no clear wall visible"}
-        """
-
-        # Create image part for Gemini and get dimensions
-        image_data = base64.b64decode(base64_image)
-
-        # Get image dimensions for area normalization (Issue 5 fix)
-        from PIL import Image
-        from io import BytesIO
-        img = Image.open(BytesIO(image_data))
-        image_width, image_height = img.size
-
-        response = model.generate_content([
-            prompt,
-            {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
-        ])
-
-        # Parse response
-        result_text = response.text.strip()
-        logger.info(f"Gemini response: {result_text[:200]}...")
-
-        # Extract JSON from response
-        import json
-        import re
-
-        json_match = re.search(r'\{[\s\S]*\}', result_text)
-        if json_match:
-            result = json.loads(json_match.group())
-
-            if result.get("wall_detected"):
-                bbox = result.get("bounding_box", {})
-                segmentation = result.get("segmentation", [])
-
-                # Extract 4 corner points from quadrilateral bounding box
-                corners = {
-                    "top_left": bbox.get("top_left", {}),
-                    "top_right": bbox.get("top_right", {}),
-                    "bottom_right": bbox.get("bottom_right", {}),
-                    "bottom_left": bbox.get("bottom_left", {})
-                }
-
-                # Build bbox array from corners: [x1, y1, x2, y2, x3, y3, x4, y4]
-                bbox_array = [
-                    float(corners["top_left"].get("x", 0)),
-                    float(corners["top_left"].get("y", 0)),
-                    float(corners["top_right"].get("x", 0)),
-                    float(corners["top_right"].get("y", 0)),
-                    float(corners["bottom_right"].get("x", 0)),
-                    float(corners["bottom_right"].get("y", 0)),
-                    float(corners["bottom_left"].get("x", 0)),
-                    float(corners["bottom_left"].get("y", 0))
-                ]
-
-                # Calculate quadrilateral area using shoelace formula (normalized 0-1)
-                area = 0.5
-                if len(segmentation) >= 4:
-                    # Shoelace formula for quadrilateral area
-                    x1, y1 = segmentation[0]
-                    x2, y2 = segmentation[1]
-                    x3, y3 = segmentation[2]
-                    x4, y4 = segmentation[3]
-                    quad_area = 0.5 * abs(x1*y2 + x2*y3 + x3*y4 + x4*y1 - y1*x2 - y2*x3 - y3*x4 - y4*x1)
-                    area = quad_area / (image_width * image_height) if image_width and image_height else 0.5
-
-                return {
-                    "success": True,
-                    "masks": [{
-                        "id": "wall-1",
-                        "area": area,
-                        "bbox": bbox_array,
-                        "segmentation": segmentation,
-                        "confidence": result.get("confidence", 0.8),
-                        "description": result.get("wall_description", "Main wall")
-                    }],
-                    "provider": "gemini",
-                    "model": "gemini-2.5-pro"
-                }
-            else:
-                logger.warning(f"Gemini did not detect wall: {result.get('reason', 'Unknown')}")
-                return None
-        else:
-            logger.error(f"Could not parse JSON from Gemini response")
-            return None
-
-    except Exception as e:
-        logger.error(f"Gemini wall detection error: {str(e)}", exc_info=True)
-        return None
-
-
-def create_mask_image(segmentation: List[List[float]], image_width: int, image_height: int) -> bytes:
-    """
-    Create a binary mask image from segmentation polygon
-
-    Args:
-        segmentation: Polygon points [[x1,y1], [x2,y2], ...]
-        image_width: Width of the original image
-        image_height: Height of the original image
-
-    Returns:
-        Mask image as PNG bytes (white = wall region, black = rest)
-    """
-    from PIL import Image, ImageDraw
-    import io
-
-    # Create black image
-    mask = Image.new('L', (image_width, image_height), 0)
-    draw = ImageDraw.Draw(mask)
-
-    # Draw white polygon for wall region
-    if segmentation:
-        # Flatten polygon points
-        flat_points = [point for sublist in segmentation for point in sublist]
-        draw.polygon(flat_points, fill=255)
-
-    # Save as PNG bytes
-    output = io.BytesIO()
-    mask.save(output, format='PNG')
-    output.seek(0)
-
-    return output.getvalue()
-
-
 def generate_wallpaper_preview_gemini(
     image_url: str,
-    wallpaper_url: str,
-    segmentation: Optional[List[List[float]]] = None  # Manual or auto-detect segmentation
+    wallpaper_url: str
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using Gemini + Replicate SDXL inpainting
+    Generate wallpaper preview using Gemini 3 Pro Image (Nano Banana)
 
-    Flow:
-    1. Gemini detects wall and returns segmentation (OR use provided segmentation)
-    2. Create mask image from segmentation
-    3. Upload room image and mask to R2
-    4. SDXL inpainting applies wallpaper pattern to wall region
-    5. Return final generated image
+    Single unified model flow:
+    1. Send room image + wallpaper reference + prompt to Gemini Pro Image
+    2. Model applies wallpaper to walls automatically (no mask needed)
+    3. Return final generated image
 
     Args:
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
-        segmentation: Optional pre-computed segmentation points [[x1,y1], [x2,y2], ...]
-                     If provided, skips Gemini wall detection
 
     Returns:
         Dict with preview_url and metadata
     """
     try:
-        import httpx
+        import google.generativeai as genai
         from PIL import Image
-        from io import BytesIO
-        import uuid
-        from r2_client import r2_client
+        import httpx
 
-        # Step 1: Use provided segmentation OR Gemini detects wall
-        if segmentation:
-            logger.info("Step 1: Using provided segmentation (manual/auto)")
-            wall_result = None
-        else:
-            logger.info("Step 1: Detecting wall with Gemini 2.0 Flash...")
-            wall_result = detect_wall_with_gemini(image_url)
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.error("Gemini API key not configured")
+            return None
 
-            if not wall_result or not wall_result.get("masks"):
-                logger.warning("Gemini wall detection failed")
-                return None
+        genai.configure(api_key=api_key)
 
-            wall_mask = wall_result["masks"][0]
-            segmentation = wall_mask.get("segmentation", [])
+        # Use Gemini 3 Pro Image (Nano Banana) - the professional image editing model
+        model = genai.GenerativeModel('gemini-3-pro-image-preview')
 
-            if not segmentation:
-                logger.warning("No segmentation data from Gemini")
-                return None
-
-            logger.info(f"Wall detected: {wall_mask.get('description')}")
-
-        # Get room image
+        # Download room image
+        logger.info("Downloading room image...")
         room_response = httpx.get(image_url, timeout=30)
         room_response.raise_for_status()
-        room_image_bytes = room_response.content
+        room_image = Image.open(io.BytesIO(room_response.content))
 
-        # Get image dimensions for mask creation
-        room_image = Image.open(BytesIO(room_image_bytes))
-        room_w, room_h = room_image.size
-
-        # Step 2: Create mask image
-        logger.info("Step 2: Creating mask image...")
-        mask_bytes = create_mask_image(segmentation, room_w, room_h)
-
-        # Step 3: Download wallpaper to analyze pattern for prompt
-        logger.info("Step 3: Analyzing wallpaper pattern...")
+        # Download wallpaper image
+        logger.info("Downloading wallpaper reference...")
         wallpaper_response = httpx.get(wallpaper_url, timeout=30)
         wallpaper_response.raise_for_status()
-        wallpaper_image = Image.open(BytesIO(wallpaper_response.content))
-        wallpaper_w, wallpaper_h = wallpaper_image.size
-        logger.info(f"Wallpaper dimensions: {wallpaper_w}x{wallpaper_h}")
+        wallpaper_image = Image.open(io.BytesIO(wallpaper_response.content))
 
-        # Step 4: Upload room image and mask to R2
-        # Upload room image (get presigned URL for AI access)
-        room_filename = f"rooms/{uuid.uuid4()}.png"
-        _, room_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=room_image_bytes,
-            filename=room_filename,
-            content_type='image/png',
-            expiration=7200
-        )
+        # Prompt for wallpaper application
+        prompt = """Apply this wallpaper texture to all visible walls in the room photo.
 
-        # Upload mask for Replicate SDXL
-        # IMPORTANT: Invert mask - Replicate expects black=keep, white=inpaint
-        # Our mask is white=wall, black=rest, so we need to invert it
-        from PIL import Image, ImageOps
-        mask_image = Image.open(BytesIO(mask_bytes))
-        inverted_mask_image = ImageOps.invert(mask_image)
-        inverted_mask_bytes = io.BytesIO()
-        inverted_mask_image.save(inverted_mask_bytes, format='PNG')
-        inverted_mask_bytes.seek(0)
+CRITICAL REQUIREMENTS:
+1. Apply wallpaper ONLY to wall surfaces - never to floor, ceiling, furniture, or objects
+2. Match the perspective correctly - walls recede into the distance
+3. Match lighting and shadows - darker areas of walls should have darker wallpaper
+4. Tile the wallpaper naturally - no obvious repeating patterns
+5. Keep all furniture, decorations, windows, doors exactly as they are
+6. Blend edges seamlessly where walls meet ceiling, floor, and corners
+7. Maintain photorealistic quality - this is a real room photo
 
-        mask_filename = f"masks/{uuid.uuid4()}.png"
-        _, mask_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=inverted_mask_bytes.getvalue(),
-            filename=mask_filename,
-            content_type='image/png',
-            expiration=7200
-        )
-
-        logger.info(f"Room image and mask uploaded (presigned URLs for AI access)")
-
-        # Step 5: SDXL inpainting - apply wallpaper pattern to wall
-        logger.info("Step 4: Generating preview with SDXL inpainting...")
-        prompt = f"""Apply this wallpaper pattern to the wall area: {wallpaper_url}
-Photorealistic room photo with wallpaper applied to wall.
-Match perspective, lighting, and shadows naturally.
-Keep furniture, floor, ceiling unchanged.
-Seamless blend at edges.
+The wallpaper image shows the exact pattern, color, and texture to apply.
 """
 
-        from replicate_client import replicate_client
-        import base64
+        logger.info("Generating preview with Gemini 3 Pro Image...")
 
-        result = replicate_client.generate_inpainting(
-            image_url=room_presigned_url,  # Use original room image
-            mask_url=mask_presigned_url,
-            prompt=prompt,
-            strength=0.75  # Higher strength to fully apply wallpaper pattern
-        )
+        # Generate with both images and prompt
+        response = model.generate_content([
+            prompt,
+            room_image,
+            wallpaper_image
+        ])
 
-        if result and result.get("success"):
-            # Decode base64 image
-            image_bytes = base64.b64decode(result["image_base64"])
+        # Get the generated image
+        if response and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and candidate.content:
+                # Extract image from response
+                generated_image = candidate.content.parts[0].image
+                if generated_image:
+                    # Convert to bytes
+                    output = io.BytesIO()
+                    generated_image.save(output, format='PNG')
+                    output.seek(0)
+                    image_bytes = output.getvalue()
 
-            # Upload to R2 and get presigned URL for frontend
-            preview_filename = f"previews/{uuid.uuid4()}.png"
-            _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
-                file_data=image_bytes,
-                filename=preview_filename,
-                content_type='image/png',
-                expiration=7200
-            )
+                    # Upload to R2 and get presigned URL
+                    from r2_client import r2_client
+                    import uuid
 
-            logger.info(f"Final preview generated (presigned URL for frontend)")
+                    preview_filename = f"previews/{uuid.uuid4()}.png"
+                    _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
+                        file_data=image_bytes,
+                        filename=preview_filename,
+                        content_type='image/png',
+                        expiration=7200
+                    )
 
-            return {
-                "success": True,
-                "preview_url": preview_presigned_url,
-                "provider": "replicate-sdxl",
-                "description": "Wallpaper applied to wall using SDXL inpainting"
-            }
+                    logger.info(f"Preview generated successfully")
 
-        logger.warning("SDXL inpainting failed")
+                    return {
+                        "success": True,
+                        "preview_url": preview_presigned_url,
+                        "provider": "gemini-3-pro-image",
+                        "model": "gemini-3-pro-image-preview",
+                        "description": "Wallpaper applied using Gemini Pro Image"
+                    }
+
+        logger.warning("Gemini Pro Image did not return a valid image")
         return None
 
     except Exception as e:
@@ -360,33 +127,21 @@ Seamless blend at edges.
         return None
 
 
-def detect_wall_ai(image_url: str) -> Optional[Dict[str, Any]]:
-    """
-    Detect wall using Gemini 1.5 Flash
-
-    Args:
-        image_url: URL of the room image
-
-    Returns:
-        Wall mask data, or None if fails
-    """
-    return detect_wall_with_gemini(image_url)
-
-
 def generate_wallpaper_preview_ai(
     image_url: str,
     wallpaper_url: str,
-    segmentation: Optional[List[List[float]]] = None
+    segmentation: Optional[list] = None  # Deprecated - not used
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate wallpaper preview using Gemini + Replicate SDXL
+    Generate wallpaper preview using Gemini Pro Image
 
     Args:
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
-        segmentation: Optional pre-computed segmentation points (manual or auto-detect)
+        segmentation: Deprecated - not used in new flow
 
     Returns:
         Dict with preview_url and metadata
     """
-    return generate_wallpaper_preview_gemini(image_url, wallpaper_url, segmentation)
+    _ = segmentation  # Mark as intentionally unused
+    return generate_wallpaper_preview_gemini(image_url, wallpaper_url)

@@ -47,14 +47,15 @@ export default function PreviewDisplay({
         onMouseLeave={handleMouseUp}
       >
         {/* Original Image (Background) */}
-        <div className="relative w-full aspect-[4/3] pointer-events-none">
+        <div className="relative w-full pointer-events-none" style={{ aspectRatio: 'auto' }}>
           <Image
             src={originalUrl}
             alt="Original room"
             fill
-            className="object-cover"
+            className="object-contain"
             unoptimized
             draggable={false}
+            sizes="100vw"
           />
         </div>
 
@@ -69,9 +70,10 @@ export default function PreviewDisplay({
             src={previewUrl}
             alt="Preview with wallpaper"
             fill
-            className="object-cover"
+            className="object-contain"
             unoptimized
             draggable={false}
+            sizes="100vw"
           />
         </div>
 
@@ -126,22 +128,16 @@ export default function PreviewDisplay({
       </div>
 
       {/* Action Buttons */}
-      <div className="mt-6 flex justify-center space-x-4">
-        {onClose && (
+      {onClose && (
+        <div className="mt-6 flex justify-center">
           <button
             onClick={onClose}
             className="btn-secondary"
           >
-            Try Different Wall
+            Try Different Wallpaper
           </button>
-        )}
-        <button
-          onClick={() => alert('Measurements & Pricing coming next!')}
-          className="btn-primary"
-        >
-          Continue to Pricing
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

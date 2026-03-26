@@ -3,12 +3,8 @@
 import { useState } from 'react'
 import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
-import WallDetectionStep from './components/WallDetectionStep'
 import PreviewDisplay from './components/PreviewDisplay'
-import MeasurementsForm from './components/MeasurementsForm'
-import CheckoutButton from './components/CheckoutButton'
 import ThemeToggle from './components/ThemeToggle'
-import { MaterialType } from './utils/pricing'
 
 interface WallpaperDesign {
   id: string
@@ -17,13 +13,6 @@ interface WallpaperDesign {
   thumbnail_url: string
   full_url: string
   description: string
-}
-
-interface BoundingBox {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 export default function Home() {
@@ -35,65 +24,22 @@ export default function Home() {
   const [selectedWallpaper, setSelectedWallpaper] = useState<WallpaperDesign | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
     setGenerateError(null)
+    setPreviewUrl(null)
   }
 
   const handleWallpaperSelect = (design: WallpaperDesign) => {
     setSelectedWallpaper(design)
   }
 
-  const [wallSegmentation, setWallSegmentation] = useState<{
-    segmentation: number[][]
-    boundingBox: BoundingBox
-    source: 'auto' | 'manual'
-  } | null>(null)
-  const [showWallDetection, setShowWallDetection] = useState(false)
-
-  const [previewData, setPreviewData] = useState<{
-    originalUrl: string
-    previewUrl: string
-  } | null>(null)
-  const [showPricing, setShowPricing] = useState(false)
-  const [orderData, setOrderData] = useState<{
-    width: number
-    height: number
-    material: MaterialType
-    price: number
-  } | null>(null)
-
-  // Handle wall detection complete
-  const handleWallDetected = (segmentation: number[][], boundingBox: BoundingBox, source: 'auto' | 'manual') => {
-    setWallSegmentation({
-      segmentation,
-      boundingBox,
-      source
-    })
-    setShowWallDetection(false)
-  }
-
-  // Handle skip wall detection
-  const handleSkipWallDetection = () => {
-    // Use full image as fallback
-    setWallSegmentation({
-      segmentation: [[0, 0], [800, 0], [800, 600], [0, 600]],
-      boundingBox: { x: 0, y: 0, width: 800, height: 600 },
-      source: 'manual'
-    })
-    setShowWallDetection(false)
-  }
-
-  // Start wall detection step
-  const handleStartWallDetection = () => {
-    setShowWallDetection(true)
-  }
-
-  // Generate preview with wall segmentation
+  // Generate preview - single step, no manual wall selection
   const handleGeneratePreview = async () => {
-    if (!selectedWallpaper || !selectedImage?.uploadedUrl || !wallSegmentation) {
-      setGenerateError('Please upload an image, select a wallpaper, and detect the wall first')
+    if (!selectedWallpaper || !selectedImage?.uploadedUrl) {
+      setGenerateError('Please upload an image and select a wallpaper')
       return
     }
 
@@ -110,8 +56,6 @@ export default function Home() {
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
           wallpaper_id: selectedWallpaper.id,
-          segmentation: wallSegmentation.segmentation,
-          source: wallSegmentation.source
         })
       })
 
@@ -120,10 +64,12 @@ export default function Home() {
       }
 
       const data = await response.json()
-      setPreviewData({
-        originalUrl: selectedImage.preview,
-        previewUrl: data.preview_url
-      })
+
+      if (data.success && data.preview_url) {
+        setPreviewUrl(data.preview_url)
+      } else {
+        throw new Error('No preview URL in response')
+      }
 
     } catch (err: any) {
       setGenerateError(err.message || 'Failed to generate preview. Please try again.')
@@ -131,6 +77,12 @@ export default function Home() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleReset = () => {
+    setPreviewUrl(null)
+    setGenerateError(null)
+    setSelectedWallpaper(null)
   }
 
   return (
@@ -144,7 +96,7 @@ export default function Home() {
             Visualize wallpaper designs on your walls with AI
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
-            Upload → Choose → Preview
+            Upload → Choose → Done
           </p>
         </header>
 
@@ -169,62 +121,16 @@ export default function Home() {
           </section>
         )}
 
-        {/* Step 3: Wall Detection */}
-        {selectedImage && selectedWallpaper && !wallSegmentation && !showWallDetection && (
+        {/* Step 3: Generate Preview */}
+        {selectedImage && selectedWallpaper && !previewUrl && (
           <section className="section">
-            <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>3. Detect Wall Area</h2>
-            <div className="flex justify-center mt-8">
-              <button
-                onClick={handleStartWallDetection}
-                className="btn-primary text-lg"
-              >
-                Detect Wall with AI
-              </button>
-            </div>
-          </section>
-        )}
+            <div className="max-w-4xl mx-auto text-center">
+              <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>3. Generate Preview</h2>
 
-        {/* Wall Detection Step */}
-        {showWallDetection && (
-          <section className="section">
-            <WallDetectionStep
-              imageUrl={selectedImage!.uploadedUrl || selectedImage!.preview}
-              onWallDetected={handleWallDetected}
-              onSkip={handleSkipWallDetection}
-            />
-          </section>
-        )}
-
-        {/* Step 4: Generate Preview */}
-        {selectedImage && selectedWallpaper && wallSegmentation && !previewData && (
-          <section className="section">
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>4. Generate Preview</h2>
-
-              {/* Wall selection summary */}
-              <div className="card flex items-center space-x-4 mt-6">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
-                  <svg className="w-5 h-5" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Wall area {wallSegmentation.source === 'auto' ? 'AI detected' : 'manually selected'}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    {wallSegmentation.boundingBox.width.toFixed(0)} × {wallSegmentation.boundingBox.height.toFixed(0)} px
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-center space-x-4 mt-8">
-                <button
-                  onClick={handleStartWallDetection}
-                  className="btn-secondary"
-                >
-                  Re-select Wall
-                </button>
+              <div className="card mt-6 p-6">
+                <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+                  AI will automatically detect walls and apply the wallpaper
+                </p>
                 <button
                   onClick={handleGeneratePreview}
                   disabled={isGenerating}
@@ -264,93 +170,27 @@ export default function Home() {
         )}
 
         {/* Preview Display */}
-        {previewData && !showPricing && (
+        {previewUrl && selectedImage?.preview && (
           <section className="section">
-            <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>3. Your Preview</h2>
+            <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>Your Preview</h2>
             <PreviewDisplay
-              originalUrl={previewData.originalUrl}
-              previewUrl={previewData.previewUrl}
-              onClose={() => setPreviewData(null)}
+              originalUrl={selectedImage.preview}
+              previewUrl={previewUrl}
+              onClose={() => setPreviewUrl(null)}
             />
-            <div className="flex justify-center mt-6">
+            <div className="flex justify-center space-x-4 mt-6">
               <button
-                onClick={() => setShowPricing(true)}
-                className="btn-primary text-lg"
+                onClick={handleReset}
+                className="btn-secondary"
               >
-                Continue to Pricing
+                Try Another Wallpaper
               </button>
             </div>
           </section>
         )}
 
-        {/* Measurements & Pricing */}
-        {showPricing && !orderData && (
-          <section className="section">
-            <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>4. Measurements & Pricing</h2>
-            <div className="mt-6">
-              <MeasurementsForm
-                onProceedToCheckout={(data) => {
-                  setOrderData(data)
-                }}
-              />
-            </div>
-          </section>
-        )}
-
-        {/* Checkout */}
-        {orderData && (
-          <section className="section">
-            <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>5. Checkout</h2>
-            <div className="max-w-2xl mx-auto card mt-8">
-              <div className="mb-6">
-                <h3 className="font-semibold text-lg mb-4" style={{ color: 'var(--text-primary)' }}>Order Summary</h3>
-                <div className="space-y-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  <div className="flex justify-between">
-                    <span>Dimensions:</span>
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{orderData.width}m × {orderData.height}m</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Area:</span>
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{(orderData.width * orderData.height).toFixed(2)} m²</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Material:</span>
-                    <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>{orderData.material.replace('_', ' ')}</span>
-                  </div>
-                  {selectedWallpaper && (
-                    <div className="flex justify-between">
-                      <span>Wallpaper:</span>
-                      <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{selectedWallpaper.name}</span>
-                    </div>
-                  )}
-                  <div className="border-t pt-3 mt-4" style={{ borderColor: 'var(--border-light)' }}>
-                    <div className="flex justify-between text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                      <span>Total:</span>
-                      <span style={{ color: 'var(--text-primary)' }}>£{orderData.price.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <CheckoutButton
-                orderData={orderData}
-                previewImageUrl={previewData?.previewUrl}
-                originalImageUrl={previewData?.originalUrl}
-                wallpaperName={selectedWallpaper?.name}
-                wallpaperId={selectedWallpaper?.id}
-              />
-
-              <div className="mt-4 p-4 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  <strong>Note:</strong> Mock checkout. Production will redirect to Shopify.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
-
         {/* Progress Summary */}
-        {(selectedImage || selectedWallpaper || previewData) && (
+        {(selectedImage || selectedWallpaper || previewUrl) && (
           <div className="max-w-2xl mx-auto mb-16">
             <div className="card">
               <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
@@ -396,7 +236,7 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex items-center space-x-3">
-                  {previewData ? (
+                  {previewUrl ? (
                     <>
                       <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
                         <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">

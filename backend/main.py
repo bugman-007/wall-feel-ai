@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
-from ai_wall_detector import detect_wall_ai, generate_wallpaper_preview_ai
+from ai_wall_detector import generate_wallpaper_preview_ai
 from typing import List, Dict, Any, Optional
 import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
@@ -44,17 +44,6 @@ app.add_middleware(
 # Add security middleware
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
-
-class SegmentRequest(BaseModel):
-    image_url: str
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg"
-            }
-        }
-    }
 
 @app.get("/")
 def read_root():
@@ -204,236 +193,18 @@ async def upload_image(file: UploadFile = File(...)):
             detail=f"Upload failed: {str(e)}"
         )
 
-@app.post("/api/segment")
-async def segment_walls(request: SegmentRequest):
-    """
-    Detect walls in room image using SAM
-
-    NOTE: This is currently a MOCK implementation.
-    Real SAM integration will be added in production.
-
-    Args:
-        request: { image_url: string }
-
-    Returns:
-        {
-            "success": true,
-            "masks": [
-                {
-                    "id": "wall-1",
-                    "area": 0.25,
-                    "bbox": [100, 50, 400, 500],
-                    "segmentation": [[x1,y1], [x2,y2], ...]
-                }
-            ],
-            "processing_time": 2.5,
-            "mock": true
-        }
-    """
-    try:
-        logger.info(f"Wall detection requested for image: {request.image_url}")
-
-        # Mock implementation (for development)
-        logger.info("Using mock wall detection")
-        await asyncio.sleep(2)  # Simulate processing time
-
-        # Generate mock wall masks
-        mock_masks = [
-            {
-                "id": "wall-1",
-                "area": 0.28,
-                "bbox": [50, 100, 350, 450],  # Left wall
-                "segmentation": [
-                    [50, 100], [400, 100], [400, 550], [50, 550]
-                ]
-            },
-            {
-                "id": "wall-2",
-                "area": 0.32,
-                "bbox": [420, 80, 380, 480],  # Back wall
-                "segmentation": [
-                    [420, 80], [800, 80], [800, 560], [420, 560]
-                ]
-            },
-            {
-                "id": "wall-3",
-                "area": 0.22,
-                "bbox": [820, 120, 300, 420],  # Right wall
-                "segmentation": [
-                    [820, 120], [1120, 120], [1120, 540], [820, 540]
-                ]
-            }
-        ]
-
-        logger.info(f"Generated {len(mock_masks)} mock wall masks")
-
-        return {
-            "success": True,
-            "masks": mock_masks,
-            "processing_time": 2.0,
-            "mock": True,
-            "message": "Using mock wall detection. Real SAM integration pending."
-        }
-
-    except Exception as e:
-        logger.error(f"Wall detection error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Wall detection failed: {str(e)}"
-        )
-
-
-class AIWallDetectRequest(BaseModel):
-    image_url: str
-    wallpaper_id: Optional[str] = None
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
-                "wallpaper_id": "floral-001"
-            }
-        }
-    }
-
-
-@app.post("/api/ai-detect-wall")
-async def ai_detect_wall(request: AIWallDetectRequest):
-    """
-    Detect the main wall in a room photo using AI (OpenAI or Gemini)
-
-    This is the SIMPLIFIED flow endpoint:
-    1. User uploads photo
-    2. AI detects the main wall automatically
-    3. AI can optionally map wallpaper pattern
-
-    Args:
-        request: {
-            image_url: string,
-            wallpaper_id: string (optional)
-        }
-
-    Returns:
-        {
-            "success": true,
-            "wall": {
-                "id": "wall-1",
-                "area": 0.25,
-                "bbox": [100, 50, 400, 500],
-                "segmentation": [[x1,y1], [x2,y2], ...],
-                "description": "Main wall facing the camera",
-                "confidence": 0.95
-            },
-            "provider": "openai" | "gemini",
-            "processing_time": 3.5
-        }
-    """
-    try:
-        logger.info(f"AI wall detection requested for image: {request.image_url}")
-
-        # Use AI to detect wall (OpenAI or Gemini)
-        result = detect_wall_ai(request.image_url)
-
-        if result and result.get("success"):
-            logger.info(f"AI wall detection successful using {result.get('provider')}")
-            # Convert masks[0] to wall object for frontend
-            wall_mask = result.get("masks", [{}])[0] if result.get("masks") else {}
-            return {
-                "success": True,
-                "wall": {
-                    "id": wall_mask.get("id", "wall-1"),
-                    "area": wall_mask.get("area", 0.35),
-                    "bbox": wall_mask.get("bbox", [0, 0, 500, 400]),
-                    "segmentation": wall_mask.get("segmentation", []),
-                    "description": wall_mask.get("description", "Main wall"),
-                    "confidence": wall_mask.get("confidence", 0.8)
-                },
-                "provider": result.get("provider", "gemini"),
-                "processing_time": 3.5
-            }
-        else:
-            # Fall back to mock data
-            logger.warning("AI wall detection failed, using mock data")
-
-            mock_wall = {
-                "id": "wall-1",
-                "area": 0.35,
-                "bbox": [100, 80, 600, 450],
-                "segmentation": [
-                    [100, 80],
-                    [700, 80],
-                    [700, 530],
-                    [100, 530]
-                ],
-                "description": "Main wall (mock fallback)",
-                "confidence": 0.5
-            }
-
-            return {
-                "success": True,
-                "wall": mock_wall,
-                "provider": "mock",
-                "processing_time": 0.5,
-                "message": "AI detection unavailable, using mock wall"
-            }
-
-    except Exception as e:
-        logger.error(f"AI wall detection error: {str(e)}", exc_info=True)
-
-        # Return mock data on error
-        mock_wall = {
-            "id": "wall-1",
-            "area": 0.35,
-            "bbox": [100, 80, 600, 450],
-            "segmentation": [
-                [100, 80],
-                [700, 80],
-                [700, 530],
-                [100, 530]
-            ],
-            "description": "Main wall (error fallback)",
-            "confidence": 0.3
-        }
-
-        return {
-            "success": True,
-            "wall": mock_wall,
-            "provider": "mock",
-            "processing_time": 0.1,
-            "error": str(e),
-            "message": "AI detection error, using mock wall"
-        }
-
-class ApplyWallpaperRequest(BaseModel):
-    image_url: str
-    wall_mask_id: str
-    wallpaper_id: str
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
-                "wall_mask_id": "wall-1",
-                "wallpaper_id": "floral-001"
-            }
-        }
-    }
 
 
 class DirectPreviewRequest(BaseModel):
-    """Request for direct wallpaper preview generation with optional manual segmentation"""
+    """Request for direct wallpaper preview generation"""
     image_url: str
     wallpaper_id: str
-    segmentation: Optional[List[List[float]]] = None  # Manual segmentation points [[x1,y1], [x2,y2], ...]
-    source: Optional[str] = None  # "auto" or "manual"
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
-                "wallpaper_id": "floral-001",
-                "segmentation": [[100, 80], [700, 80], [700, 530], [100, 530]],
-                "source": "manual"
+                "wallpaper_id": "floral-001"
             }
         }
     }
@@ -465,18 +236,23 @@ class CreateOrderRequest(BaseModel):
         }
     }
 
-@app.post("/api/apply-wallpaper")
-async def apply_wallpaper(request: ApplyWallpaperRequest):
-    """
-    Apply wallpaper to selected wall using SDXL
 
-    NOTE: This is currently a MOCK implementation.
-    Real SDXL integration will be added in production.
+
+@app.post("/api/ai-generate-preview")
+async def ai_generate_preview(request: DirectPreviewRequest):
+    """
+    Generate wallpaper preview using Gemini 3 Pro Image (Nano Banana)
+
+    SIMPLIFIED 2-step flow:
+    1. User uploads room photo + selects wallpaper
+    2. Gemini Pro Image applies wallpaper to walls automatically
+    3. Returns final preview image
+
+    No manual wall selection needed - AI handles everything.
 
     Args:
         request: {
-            image_url: string,
-            wall_mask_id: string,
+            image_url: string (room photo),
             wallpaper_id: string
         }
 
@@ -484,75 +260,12 @@ async def apply_wallpaper(request: ApplyWallpaperRequest):
         {
             "success": true,
             "preview_url": "https://...",
-            "processing_time": 25.0,
-            "mock": true
-        }
-    """
-    try:
-        logger.info(f"Preview generation requested for wall: {request.wall_mask_id}, wallpaper: {request.wallpaper_id}")
-
-        # Mock implementation (for development)
-        logger.info("Using mock preview generation")
-        await asyncio.sleep(3)  # Simulate processing time
-
-        # Return a placeholder preview image
-        mock_preview_url = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop"
-
-        logger.info("Mock preview generated successfully")
-
-        return {
-            "success": True,
-            "preview_url": mock_preview_url,
-            "original_url": request.image_url,
-            "processing_time": 3.0,
-            "mock": True,
-            "message": "Using mock preview generation. Real SDXL integration pending."
-        }
-
-    except Exception as e:
-        logger.error(f"Preview generation error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Preview generation failed: {str(e)}"
-        )
-
-
-@app.post("/api/ai-generate-preview")
-async def ai_generate_preview(request: DirectPreviewRequest):
-    """
-    Generate wallpaper preview directly using AI (OpenAI/Gemini)
-
-    SIMPLIFIED flow endpoint:
-    1. User uploads room photo
-    2. User selects wallpaper
-    3. AI composites both images with prompt "apply wallpaper to wall"
-    4. Returns final preview image
-
-    Optional manual segmentation:
-    - If segmentation is provided (from manual selection or auto-detect), it will be used
-    - If no segmentation, AI will detect the wall automatically
-
-    Args:
-        request: {
-            image_url: string (room photo),
-            wallpaper_id: string,
-            segmentation: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] (optional),
-            source: "auto" | "manual" (optional)
-        }
-
-    Returns:
-        {
-            "success": true,
-            "preview_url": "https://...",
-            "description": "Wallpaper applied to main wall",
-            "provider": "openai" | "gemini" | "stability-sdxl",
-            "processing_time": 5.0
+            "provider": "gemini-3-pro-image",
+            "processing_time": 10.0
         }
     """
     try:
         logger.info(f"AI preview generation requested for wallpaper: {request.wallpaper_id}")
-        if request.segmentation:
-            logger.info(f"Using provided segmentation ({request.source or 'unknown'} source)")
 
         # Get wallpaper URL from catalog
         catalog_path = Path(__file__).parent / "catalog.json"
@@ -565,18 +278,17 @@ async def ai_generate_preview(request: DirectPreviewRequest):
 
         wallpaper_url = wallpaper['full_url']
 
-        # Use AI to generate preview, passing segmentation if provided
+        # Generate preview using Gemini Pro Image
         result = generate_wallpaper_preview_ai(
             image_url=request.image_url,
-            wallpaper_url=wallpaper_url,
-            segmentation=request.segmentation  # Pass manual/auto segmentation if provided
+            wallpaper_url=wallpaper_url
         )
 
         if result and result.get("success"):
-            logger.info(f"AI preview generated successfully using {result.get('provider')}")
+            logger.info(f"Preview generated successfully using {result.get('provider')}")
             return {
                 **result,
-                "processing_time": 5.0
+                "processing_time": 10.0
             }
         else:
             # Fall back to mock
