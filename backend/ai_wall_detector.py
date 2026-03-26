@@ -346,8 +346,6 @@ def generate_wallpaper_preview_gemini(
         # Generate preview with AFC disabled
         # Note: Native image_size config not available in current SDK version; we handle resize locally
         response = client.models.generate_content(
-            # model='gemini-3-pro-image-preview',
-            # model='gemini-2.5-flash-image',
             model='gemini-3.1-flash-image-preview',
             contents=[
                 prompt or DEFAULT_WALLPAPER_PROMPT,
