@@ -33,6 +33,14 @@ The wallpaper image shows the exact pattern, color, and texture to apply.
 # Maximum dimension for output images (performance & quality balance)
 MAX_OUTPUT_DIMENSION = 2048
 
+# Quality presets: target dimension for the longest side
+QUALITY_DIMENSIONS = {
+    '1k': 1024,
+    '2k': 2048,
+    '4k': 3840,
+    '8k': 7680,
+}
+
 
 def _download_image(image_url: str, timeout: int = 30) -> bytes:
     """Download image from URL and return as bytes."""
@@ -95,7 +103,8 @@ def _resize_and_correct_image(image_bytes: bytes, target_width: int, target_heig
 def generate_wallpaper_preview_gemini(
     image_url: str,
     wallpaper_url: str,
-    prompt: Optional[str] = None
+    prompt: Optional[str] = None,
+    quality: str = "1k"
 ) -> Optional[Dict[str, Any]]:
     """
     Generate wallpaper preview using Gemini 3 Pro Image (Nano Banana)
@@ -109,6 +118,7 @@ def generate_wallpaper_preview_gemini(
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
         prompt: Optional custom prompt (uses default if not provided)
+        quality: Output quality preset (1k, 2k, 4k, 8k) - default 1k
 
     Returns:
         Dict with preview_url and metadata, or None if failed
@@ -181,10 +191,20 @@ def generate_wallpaper_preview_gemini(
             logger.warning("Gemini Pro Image did not return a valid image")
             return None
 
-        # Resize generated image to match original aspect ratio and correct EXIF orientation
-        logger.info(f"Resizing generated image to match original: {original_width}x{original_height}")
+        # Calculate target dimensions based on quality setting (preserve aspect ratio)
+        target_dimension = QUALITY_DIMENSIONS.get(quality, 1024)
+        aspect_ratio = original_width / original_height
+        if aspect_ratio > 1:
+            target_width = target_dimension
+            target_height = int(target_dimension / aspect_ratio)
+        else:
+            target_height = target_dimension
+            target_width = int(target_dimension * aspect_ratio)
+
+        # Resize generated image to quality-based dimensions and correct EXIF orientation
+        logger.info(f"Resizing generated image to {quality.upper()} quality: {target_width}x{target_height}")
         resize_start = time.time()
-        image_bytes = _resize_and_correct_image(image_bytes, original_width, original_height)
+        image_bytes = _resize_and_correct_image(image_bytes, target_width, target_height)
         resize_elapsed = time.time() - resize_start
         logger.info(f"Image resize completed in {resize_elapsed:.2f}s")
 
@@ -219,6 +239,7 @@ def generate_wallpaper_preview_gemini(
 def generate_wallpaper_preview_ai(
     image_url: str,
     wallpaper_url: str,
+    quality: str = "1k",
     segmentation: Optional[list] = None
 ) -> Optional[Dict[str, Any]]:
     """
@@ -227,10 +248,11 @@ def generate_wallpaper_preview_ai(
     Args:
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
+        quality: Output quality preset (1k, 2k, 4k, 8k) - default 1k
         segmentation: Deprecated - not used in new flow
 
     Returns:
         Dict with preview_url and metadata
     """
     _ = segmentation  # Mark as intentionally unused
-    return generate_wallpaper_preview_gemini(image_url, wallpaper_url)
+    return generate_wallpaper_preview_gemini(image_url, wallpaper_url, quality=quality)

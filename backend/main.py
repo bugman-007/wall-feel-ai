@@ -199,12 +199,14 @@ class DirectPreviewRequest(BaseModel):
     """Request for direct wallpaper preview generation"""
     image_url: str
     wallpaper_id: str
+    quality: str = "1k"  # Default to fastest: 1k, 2k, 4k, 8k
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "image_url": "https://pub-xxx.r2.dev/uploads/image.jpg",
-                "wallpaper_id": "floral-001"
+                "wallpaper_id": "floral-001",
+                "quality": "2k"
             }
         }
     }
@@ -281,7 +283,8 @@ async def ai_generate_preview(request: DirectPreviewRequest):
         # Generate preview using Gemini Pro Image
         result = generate_wallpaper_preview_ai(
             image_url=request.image_url,
-            wallpaper_url=wallpaper_url
+            wallpaper_url=wallpaper_url,
+            quality=request.quality
         )
 
         if result and result.get("success"):

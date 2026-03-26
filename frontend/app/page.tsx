@@ -5,6 +5,7 @@ import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
 import PreviewDisplay from './components/PreviewDisplay'
 import ThemeToggle from './components/ThemeToggle'
+import QualitySelector from './components/QualitySelector'
 
 interface WallpaperDesign {
   id: string
@@ -22,6 +23,7 @@ export default function Home() {
     uploadedUrl?: string
   } | null>(null)
   const [selectedWallpaper, setSelectedWallpaper] = useState<WallpaperDesign | null>(null)
+  const [selectedQuality, setSelectedQuality] = useState<'1k' | '2k' | '4k' | '8k'>('1k')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -56,6 +58,7 @@ export default function Home() {
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
           wallpaper_id: selectedWallpaper.id,
+          quality: selectedQuality,
         })
       })
 
@@ -121,15 +124,31 @@ export default function Home() {
           </section>
         )}
 
-        {/* Step 3: Generate Preview */}
+        {/* Step 3: Choose Quality */}
+        {selectedImage && selectedWallpaper && !previewUrl && (
+          <section className="section">
+            <h2 style={{ color: 'var(--text-primary)' }}>3. Choose Output Quality</h2>
+            <div className="mt-6">
+              <QualitySelector
+                selectedId={selectedQuality}
+                onSelect={setSelectedQuality}
+              />
+            </div>
+          </section>
+        )}
+
+        {/* Step 4: Generate Preview */}
         {selectedImage && selectedWallpaper && !previewUrl && (
           <section className="section">
             <div className="max-w-4xl mx-auto text-center">
-              <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>3. Generate Preview</h2>
+              <h2 className="text-center" style={{ color: 'var(--text-primary)' }}>4. Generate Preview</h2>
 
               <div className="card mt-6 p-6">
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                   AI will automatically detect walls and apply the wallpaper
+                </p>
+                <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+                  Selected quality: <strong>{selectedQuality.toUpperCase()}</strong> (Estimated time: ~{selectedQuality === '1k' ? '5' : selectedQuality === '2k' ? '8' : selectedQuality === '4k' ? '12' : '20'} seconds)
                 </p>
                 <button
                   onClick={handleGeneratePreview}
