@@ -41,6 +41,20 @@ export default function PreviewDisplay({
   }
 
   
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null)
+
+  const handleOriginalLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget
+    const containerWidth = e.currentTarget.parentElement?.offsetWidth || 0
+    if (containerWidth > 0 && naturalWidth > 0) {
+      const scale = containerWidth / naturalWidth
+      setImageDimensions({
+        width: naturalWidth * scale,
+        height: naturalHeight * scale
+      })
+    }
+  }
+
   return (
     <div className="w-full max-w-4xl mx-auto">
       {/* Comparison Container */}
@@ -56,7 +70,7 @@ export default function PreviewDisplay({
         style={{ minHeight: '400px' }}
       >
         {/* Original Image (Background) */}
-        <div className="relative w-full h-[600px] pointer-events-none">
+        <div className="relative w-full h-[600px] pointer-events-none flex items-center justify-center">
           <Image
             src={originalUrl}
             alt="Original room"
@@ -65,12 +79,13 @@ export default function PreviewDisplay({
             unoptimized
             draggable={false}
             sizes="100vw"
+            onLoad={handleOriginalLoad}
           />
         </div>
 
         {/* Preview Image (Overlay with clip) */}
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none flex items-center justify-center"
           style={{
             clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
           }}
@@ -80,6 +95,12 @@ export default function PreviewDisplay({
             alt="Preview with wallpaper"
             fill
             className="object-contain"
+            style={{
+              width: imageDimensions?.width,
+              height: imageDimensions?.height,
+              maxWidth: '100%',
+              maxHeight: '100%'
+            }}
             unoptimized
             draggable={false}
             sizes="100vw"
