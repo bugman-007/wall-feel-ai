@@ -24,7 +24,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     }
   }, [preview])
 
-  const uploadToBackend = async (file: File, previewUrl: string) => {
+  const uploadToBackend = useCallback(async (file: File, previewUrl: string) => {
     setUploading(true)
     setUploadProgress(0)
     setError(null)
@@ -65,7 +65,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       setUploading(false)
       setTimeout(() => setUploadProgress(0), 1000)
     }
-  }
+  }, [onImageSelect])
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setError(null)
@@ -100,7 +100,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       // Upload to backend
       uploadToBackend(file, previewUrl)
     }
-  }, [preview])
+  }, [preview, uploadToBackend])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
