@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 import CameraCapture from './CameraCapture'
@@ -15,8 +15,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [fileName, setFileName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [showCamera, setShowCamera] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -105,6 +104,23 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     }
   }, [preview, uploadToBackend])
 
+  const onCameraFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setError(null)
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setFileName(file.name)
+
+    if (preview) {
+      URL.revokeObjectURL(preview)
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
+    uploadToBackend(file, previewUrl)
+    event.target.value = ''
+  }
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -149,69 +165,16 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             position: 'relative'
           }}
         >
-          <input {...getInputProps()} ref={fileInputRef} className="dropzone-input" />
-
-          {/* Action Buttons - Top Right Corner */}
-          <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '12px', zIndex: 10 }}>
-            {/* Upload from Gallery Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                fileInputRef.current?.click()
-              }}
-              className="gallery-btn"
-              title="Upload from gallery"
-              style={{
-                background: 'var(--gold)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '48px',
-                height: '48px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              <svg className="w-6 h-6" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-
-            {/* Camera Capture Button */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowCamera(true); }}
-              className="camera-btn"
-              title="Take a photo with camera"
-              style={{
-                background: 'var(--gold)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '48px',
-                height: '48px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              <svg className="w-6 h-6" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </div>
+          <input {...getInputProps()} />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onCameraFileChange}
+            disabled={uploading}
+          />
 
           <div className="space-y-4">
 
@@ -250,6 +213,20 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Supports: JPEG, PNG (max 10MB)
             </p>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={uploading}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  cameraInputRef.current?.click()
+                }}
+              >
+                Take a Photo
+              </button>
+            </div>
           </div>
         </div>
       ) : (
