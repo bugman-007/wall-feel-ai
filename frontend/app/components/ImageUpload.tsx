@@ -3,6 +3,7 @@
 import { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
+import CameraCapture from './CameraCapture'
 
 interface ImageUploadProps {
   onImageSelect: (file: File, preview: string, uploadedUrl?: string) => void
@@ -14,6 +15,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [fileName, setFileName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [showCamera, setShowCamera] = useState(false)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -123,6 +125,14 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     setUploadProgress(0)
   }
 
+  const handleCameraCapture = (file: File) => {
+    setFileName(file.name)
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
+    uploadToBackend(file, previewUrl)
+    setShowCamera(false)
+  }
+
   return (
     <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
@@ -140,6 +150,36 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
           <input {...getInputProps()} />
 
           <div className="space-y-4">
+            {/* Camera Capture Button */}
+            <div className="camera-button-container" style={{ position: 'absolute', top: '16px', right: '16px' }}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowCamera(true); }}
+                className="camera-btn"
+                title="Take a photo with camera"
+                style={{
+                  background: 'var(--gold)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '48px',
+                  height: '48px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <svg className="w-6 h-6" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            </div>
+
             <div className="flex justify-center">
               <svg
                 className="w-16 h-16"
@@ -270,6 +310,13 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             </p>
           </div>
         </div>
+      )}
+
+      {showCamera && (
+        <CameraCapture
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
       )}
     </div>
   )
