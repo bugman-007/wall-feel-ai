@@ -621,3 +621,20 @@ body {
   width: 1rem;
   height: 1rem;
 }
+
+/* Camera Button in Upload Section */
+.camera-btn {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.upload-dropzone {
+  position: relative;
+}
+
+.upload-dropzone .camera-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+}

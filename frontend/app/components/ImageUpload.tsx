@@ -137,48 +137,52 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
         <div
-          {...getRootProps()}
-          className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+          className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
           style={{
             borderStyle: isDragActive ? 'solid' : 'dashed',
             borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
             background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
             opacity: uploading ? 0.5 : 1,
-            cursor: uploading ? 'not-allowed' : 'pointer'
+            cursor: uploading ? 'not-allowed' : 'pointer',
+            position: 'relative'
           }}
+          onClick={() => {}}
         >
           <input {...getInputProps()} />
 
+          {/* Camera Capture Button - Always visible */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setShowCamera(true); }}
+            className="camera-btn"
+            title="Take a photo with camera"
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              background: 'var(--gold)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '48px',
+              height: '48px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)',
+              zIndex: 10
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg className="w-6 h-6" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
           <div className="space-y-4">
-            {/* Camera Capture Button */}
-            <div className="camera-button-container" style={{ position: 'absolute', top: '16px', right: '16px' }}>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowCamera(true); }}
-                className="camera-btn"
-                title="Take a photo with camera"
-                style={{
-                  background: 'var(--gold)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '48px',
-                  height: '48px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                <svg className="w-6 h-6" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-            </div>
 
             <div className="flex justify-center">
               <svg
