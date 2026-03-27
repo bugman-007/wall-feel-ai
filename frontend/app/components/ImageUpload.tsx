@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 import CameraCapture from './CameraCapture'
@@ -16,6 +16,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [showCamera, setShowCamera] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -133,18 +134,11 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     setShowCamera(false)
   }
 
-  const handleGalleryUpload = useCallback(() => {
-    // Trigger the hidden file input
-    const input = document.querySelector('.dropzone-input') as HTMLInputElement
-    if (input) {
-      input.click()
-    }
-  }, [])
-
   return (
     <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
         <div
+          {...getRootProps()}
           className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
           style={{
             borderStyle: isDragActive ? 'solid' : 'dashed',
@@ -154,16 +148,19 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             cursor: uploading ? 'not-allowed' : 'pointer',
             position: 'relative'
           }}
-          onClick={() => {}}
         >
-          <input {...getInputProps()} className="dropzone-input" />
+          <input {...getInputProps()} ref={fileInputRef} className="dropzone-input" />
 
           {/* Action Buttons - Top Right Corner */}
           <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '12px', zIndex: 10 }}>
             {/* Upload from Gallery Button */}
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); handleGalleryUpload(); }}
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                fileInputRef.current?.click()
+              }}
               className="gallery-btn"
               title="Upload from gallery"
               style={{
