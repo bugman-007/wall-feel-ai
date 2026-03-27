@@ -622,8 +622,9 @@ body {
   height: 1rem;
 }
 
-/* Camera Button in Upload Section */
-.camera-btn {
+/* Camera and Gallery Buttons in Upload Section */
+.camera-btn,
+.gallery-btn {
   opacity: 1 !important;
   visibility: visible !important;
 }
@@ -632,9 +633,8 @@ body {
   position: relative;
 }
 
-.upload-dropzone .camera-btn {
+.upload-dropzone .camera-btn,
+.upload-dropzone .gallery-btn {
   position: absolute;
-  top: 16px;
-  right: 16px;
   z-index: 10;
 }
