@@ -91,7 +91,7 @@ export default function PreviewDisplay({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-6xl mx-auto">
       {/* Comparison Container */}
       <div
         className="comparison-container relative rounded-lg overflow-hidden cursor-col-resize select-none card"
@@ -102,10 +102,10 @@ export default function PreviewDisplay({
         onTouchMove={handleMouseMove}
         onTouchStart={handleMouseDown}
         onTouchEnd={handleMouseUp}
-        style={{ minHeight: '400px' }}
+        style={{ minHeight: '500px' }}
       >
         {/* Original Image (Background) */}
-        <div className="relative w-full h-[600px] pointer-events-none flex items-center justify-center">
+        <div className="relative w-full h-[650px] pointer-events-none flex items-center justify-center">
           <Image
             src={originalUrl}
             alt="Original room"

@@ -124,7 +124,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
         <div
           {...getRootProps()}
@@ -179,13 +179,13 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative rounded-lg overflow-hidden card">
+          <div className="relative rounded-lg overflow-hidden card" style={{ minHeight: '400px' }}>
             <Image
               src={preview}
               alt="Uploaded room"
-              width={800}
-              height={600}
-              className="w-full h-auto"
+              fill
+              sizes="100vw"
+              className="object-contain"
               unoptimized
             />
 
