@@ -306,3 +306,175 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Visualizer Section Styles */
+.step-section {
+  margin-bottom: 48px;
+}
+
+.step-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  font-weight: 500;
+  margin-bottom: 20px;
+  color: var(--text);
+}
+
+.text-center {
+  text-align: center;
+}
+
+/* Card styling for visualizer */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+/* Space utilities */
+.space-y-3 > * + * {
+  margin-top: 12px;
+}
+
+.space-x-3 > * + * {
+  margin-left: 12px;
+}
+
+/* Text utilities */
+.text-lg {
+  font-size: 1.125rem;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.mb-4 {
+  margin-bottom: 16px;
+}
+
+.mb-6 {
+  margin-bottom: 24px;
+}
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.gap-12 {
+  gap: 12px;
+}
+
+.w-5, .h-5 {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.w-3, .h-3 {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.rounded-full {
+  border-radius: 50%;
+}
+
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+.cursor-not-allowed {
+  cursor: not-allowed;
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.opacity-25 {
+  opacity: 0.25;
+}
+
+.opacity-75 {
+  opacity: 0.75;
+}
+
+/* Color utilities */
+.text-primary {
+  color: var(--text);
+}
+
+.text-secondary {
+  color: var(--muted);
+}
+
+.text-muted {
+  color: #8a857e;
+}
+
+.bg-primary {
+  background: var(--text);
+}
+
+.bg-secondary {
+  background: #f0ebe4;
+}
+
+.border-light {
+  border-color: var(--line);
+}
+
+/* Border color utility */
+.border-red {
+  border-color: #ef4444;
+}
+
+/* Text color red */
+.text-red {
+  color: #ef4444;
+}
+
+/* Gold button hover state */
+.gold-btn:hover:not(:disabled) {
+  background: linear-gradient(#e0c49a, #d4b580);
+}
+
+.gold-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
