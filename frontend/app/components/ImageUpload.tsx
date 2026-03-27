@@ -179,14 +179,22 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative rounded-lg overflow-hidden card" style={{ minHeight: '400px' }}>
+          <div className="relative rounded-lg overflow-hidden card" style={{ background: 'var(--bg-secondary)' }}>
             <Image
               src={preview}
               alt="Uploaded room"
-              fill
-              sizes="100vw"
-              className="object-contain"
+              width={1200}
+              height={800}
+              className="w-full h-auto"
               unoptimized
+              onLoad={(e) => {
+                const target = e.target as HTMLImageElement;
+                const container = target.parentElement;
+                if (container) {
+                  container.style.minHeight = 'auto';
+                  container.style.height = 'auto';
+                }
+              }}
             />
 
             {/* Upload overlay */}

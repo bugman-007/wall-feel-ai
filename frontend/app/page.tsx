@@ -45,6 +45,16 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [isDarkMode, setIsDarkMode] = useState(false)
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode)
+  }
+
+  // Apply theme to document
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
+  }
 
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
@@ -104,6 +114,42 @@ export default function Home() {
   return (
     <main className="luxury-page">
       <section className="hero-section">
+        {/* Theme Toggle Button */}
+        <button
+          onClick={toggleTheme}
+          className="theme-toggle"
+          aria-label="Toggle dark mode"
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            zIndex: 100,
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          {isDarkMode ? (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          )}
+        </button>
+
         <div className="hero-image-layer" />
         <div className="hero-content">
           <p className="brand-mark">WALLFEEL</p>
@@ -111,7 +157,6 @@ export default function Home() {
           <p className="hero-subtitle">AI-powered wall design. Upload. Visualize. Experience.</p>
           <div className="hero-actions">
             <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>Start Designing</button>
-            <button className="ghost-btn">Explore Designs</button>
           </div>
         </div>
       </section>
@@ -147,69 +192,47 @@ export default function Home() {
           Upload your room photo and explore how our premium wallpapers transform your space instantly.
         </p>
 
-        {/* Progress Indicator */}
+        {/* Modern Progress Bar */}
         {(selectedImage || selectedWallpaper || previewUrl) && (
-          <div className="card" style={{ marginBottom: '32px', maxWidth: '600px', margin: '0 auto 32px' }}>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)', textAlign: 'center' }}>
-              Your Progress
-            </h3>
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                {selectedImage ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
-                      <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Room photo uploaded</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <div className="progress-bar-container" style={{ marginBottom: '40px' }}>
+            <div className="progress-steps">
+              <div className={`progress-step ${selectedImage ? 'completed' : ''} ${!selectedImage && selectedWallpaper ? 'active' : ''}`}>
+                <div className="progress-indicator">
+                  {selectedImage ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span style={{ color: 'var(--text-muted)' }}>No room photo selected</span>
-                  </>
-                )}
+                  ) : (
+                    <span>1</span>
+                  )}
+                </div>
+                <span className="progress-label">Upload</span>
               </div>
-              <div className="flex items-center space-x-3">
-                {selectedWallpaper ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
-                      <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Wallpaper: {selectedWallpaper.name}</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <div className="progress-line" style={{ background: selectedWallpaper ? 'var(--gold)' : 'var(--border-light)' }} />
+              <div className={`progress-step ${selectedWallpaper ? 'completed' : ''} ${!selectedWallpaper && !previewUrl ? 'active' : ''}`}>
+                <div className="progress-indicator">
+                  {selectedWallpaper ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span style={{ color: 'var(--text-muted)' }}>No wallpaper selected</span>
-                  </>
-                )}
+                  ) : (
+                    <span>2</span>
+                  )}
+                </div>
+                <span className="progress-label">Choose</span>
               </div>
-              <div className="flex items-center space-x-3">
-                {previewUrl ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
-                      <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Preview generated</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <div className="progress-line" style={{ background: previewUrl ? 'var(--gold)' : 'var(--border-light)' }} />
+              <div className={`progress-step ${previewUrl ? 'completed' : ''}`}>
+                <div className="progress-indicator">
+                  {previewUrl ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span style={{ color: 'var(--text-muted)' }}>Preview not generated yet</span>
-                  </>
-                )}
+                  ) : (
+                    <span>3</span>
+                  )}
+                </div>
+                <span className="progress-label">Preview</span>
               </div>
             </div>
           </div>
@@ -304,7 +327,7 @@ export default function Home() {
         )}
       </section>
 
-      <section className="content-shell">
+      {/* <section className="content-shell">
         <h2 className="section-title">Explore Our Design Library</h2>
         <div className="category-row">
           {categories.map((category) => (
@@ -320,9 +343,9 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </section>
+      </section> */}
 
-      <section className="content-shell partner-shell">
+      {/* <section className="content-shell partner-shell">
         <h2 className="section-title">For Businesses & Partners</h2>
         <p className="partner-subtitle">Transform commercial spaces into memorable brand experiences.</p>
         <div className="partner-row">
@@ -330,7 +353,7 @@ export default function Home() {
             <span key={type}>{type}</span>
           ))}
         </div>
-      </section>
+      </section> */}
 
       <section className="content-shell cta-shell">
         <h2 className="section-title">Ready to Redefine Your Space?</h2>

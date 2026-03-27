@@ -3,13 +3,37 @@
 @tailwind utilities;
 
 :root {
+  /* Light Mode (Default) */
   --bg: #f7f4ef;
   --panel: #fdfbf7;
   --text: #2c2a28;
-  --muted: #5f5c58;
+  --text-secondary: #5f5c58;
+  --muted: #8a857e;
   --gold: #c8aa75;
   --gold-deep: #b4925d;
   --line: #e6ddd1;
+  --border-light: #e6ddd1;
+  --bg-secondary: #f0ebe4;
+  --bg-tertiary: #e8e0d5;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  --bg: #1a1816;
+  --panel: #252220;
+  --text: #f5f3f0;
+  --text-secondary: #c9c6c0;
+  --muted: #8a857e;
+  --gold: #d4b885;
+  --gold-deep: #c4a26a;
+  --line: #3a3632;
+  --border-light: #3a3632;
+  --bg-secondary: #2d2a28;
+  --bg-tertiary: #353230;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 * {
@@ -477,4 +501,83 @@ body {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* Theme Toggle Button */
+.theme-toggle:hover {
+  background: var(--panel);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Modern Progress Bar */
+.progress-bar-container {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-indicator {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-light);
+  color: var(--muted);
+}
+
+.progress-step.active .progress-indicator {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(200, 170, 117, 0.2);
+}
+
+.progress-step.completed .progress-indicator {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #ffffff;
+}
+
+.progress-line {
+  flex: 1;
+  height: 2px;
+  margin: 0 8px;
+  transition: background 0.3s ease;
+}
+
+.progress-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.progress-step.active .progress-label,
+.progress-step.completed .progress-label {
+  color: var(--text);
+}
+
+.w-4, .h-4 {
+  width: 1rem;
+  height: 1rem;
 }
