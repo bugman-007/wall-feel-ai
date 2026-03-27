@@ -72,10 +72,17 @@ body {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to bottom, rgba(251, 246, 238, 0.2), rgba(251, 246, 238, 0.88)),
+    linear-gradient(to bottom, rgba(251, 246, 238, 0.3), rgba(251, 246, 238, 0.85)),
     url('https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1600&q=80');
   background-size: cover;
   background-position: center;
+}
+
+/* Dark mode hero overlay - darker for better text readability */
+[data-theme="dark"] .hero-image-layer {
+  background-image:
+    linear-gradient(to bottom, rgba(26, 24, 22, 0.5), rgba(26, 24, 22, 0.85)),
+    url('https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1600&q=80');
 }
 
 .hero-content {
@@ -91,6 +98,13 @@ body {
   margin-bottom: 14px;
   color: #43403b;
   font-size: 13px;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+}
+
+/* Dark mode brand mark */
+[data-theme="dark"] .brand-mark {
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
 .hero-content h1 {
@@ -99,12 +113,26 @@ body {
   line-height: 1.15;
   font-weight: 500;
   margin-bottom: 14px;
+  color: #2c2a28;
+  text-shadow: 0 2px 4px rgba(255,255,255,0.8);
 }
 
 .hero-subtitle {
-  color: var(--muted);
+  color: #5f5c58;
   font-size: 1.1rem;
   margin-bottom: 24px;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.6);
+}
+
+/* Dark mode hero text - ensure readability */
+[data-theme="dark"] .hero-content h1 {
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+[data-theme="dark"] .hero-subtitle {
+  color: #e5e3e0;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
 .hero-actions {
@@ -228,11 +256,23 @@ body {
   place-items: center;
   font-weight: 600;
   color: #3b2f1e;
+  flex-shrink: 0;
 }
 
 .step-item p {
   font-size: 0.9rem;
   font-weight: 600;
+  color: #2c2a28;
+}
+
+/* Dark mode "How It Works" section - ensure text readability */
+[data-theme="dark"] .step-item {
+  background: #2d2a28;
+  border-color: #4a4642;
+}
+
+[data-theme="dark"] .step-item p {
+  color: #f5f3f0;
 }
 
 .category-row {
