@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 
@@ -14,6 +14,8 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [fileName, setFileName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const localInputRef = useRef<HTMLInputElement | null>(null)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     }
   }, [preview])
 
-  const uploadToBackend = async (file: File, previewUrl: string) => {
+  const uploadToBackend = useCallback(async (file: File, previewUrl: string) => {
     setUploading(true)
     setUploadProgress(0)
     setError(null)
@@ -65,7 +67,23 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       setUploading(false)
       setTimeout(() => setUploadProgress(0), 1000)
     }
-  }
+  }, [onImageSelect])
+
+  const processSelectedFile = useCallback((file: File) => {
+    setFileName(file.name)
+
+    // Revoke old preview URL to prevent memory leak
+    if (preview) {
+      URL.revokeObjectURL(preview)
+    }
+
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
+
+    // Upload to backend
+    uploadToBackend(file, previewUrl)
+  }, [preview, uploadToBackend])
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setError(null)
@@ -85,22 +103,17 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
     // Handle accepted file
     if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0]
-      setFileName(file.name)
-
-      // Revoke old preview URL to prevent memory leak
-      if (preview) {
-        URL.revokeObjectURL(preview)
-      }
-
-      // Create preview URL
-      const previewUrl = URL.createObjectURL(file)
-      setPreview(previewUrl)
-
-      // Upload to backend
-      uploadToBackend(file, previewUrl)
+      processSelectedFile(acceptedFiles[0])
     }
-  }, [preview])
+  }, [processSelectedFile])
+
+  const onFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setError(null)
+    const file = event.target.files?.[0]
+    if (!file) return
+    processSelectedFile(file)
+    event.target.value = ''
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -110,7 +123,8 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     },
     maxSize: 10 * 1024 * 1024, // 10MB
     multiple: false,
-    disabled: uploading
+    disabled: uploading,
+    noClick: true
   })
 
   const clearImage = () => {
@@ -138,6 +152,23 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
           }}
         >
           <input {...getInputProps()} />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onFileInputChange}
+            disabled={uploading}
+          />
+          <input
+            ref={localInputRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            className="hidden"
+            onChange={onFileInputChange}
+            disabled={uploading}
+          />
 
           <div className="space-y-4">
             <div className="flex justify-center">
@@ -175,6 +206,25 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Supports: JPEG, PNG (max 10MB)
             </p>
+
+            <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={uploading}
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                Take a Photo
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={uploading}
+                onClick={() => localInputRef.current?.click()}
+              >
+                Upload from Device
+              </button>
+            </div>
           </div>
         </div>
       ) : (
