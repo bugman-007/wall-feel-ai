@@ -26,7 +26,7 @@ export default function QualitySelector({ selectedId, onSelect }: QualitySelecto
         <div
           key={option.id}
           onClick={() => onSelect(option.id)}
-          className="card cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1"
+          className="card cursor-pointer transition-all duration-300 hover:shadow-md"
           style={{
             border: selectedId === option.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
             boxShadow: selectedId === option.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'var(--shadow-sm)',
