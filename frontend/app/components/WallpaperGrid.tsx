@@ -90,12 +90,18 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
         <button
           key={design.id}
           onClick={() => onWallpaperSelect(design)}
-          className="group relative rounded-xl overflow-hidden transition-all duration-200 hover:scale-105 card"
+          className="group relative rounded-xl overflow-hidden transition-all duration-300 hover:scale-105 card"
           style={{
-            border: selectedId === design.id ? '2px solid var(--text-primary)' : '1px solid var(--border-light)',
-            boxShadow: selectedId === design.id ? 'var(--shadow-md)' : 'none'
+            border: selectedId === design.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+            boxShadow: selectedId === design.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'none',
+            transform: selectedId === design.id ? 'scale(1.02)' : 'none'
           }}
         >
+          {/* Gold glow overlay for selected state */}
+          {selectedId === design.id && (
+            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 2px var(--gold)', zIndex: 10 }} />
+          )}
+
           <div className="aspect-square relative" style={{ background: 'var(--bg-secondary)' }}>
             <Image
               src={design.thumbnail_url}
@@ -117,10 +123,10 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
               </div>
             </div>
 
-            {/* Selected indicator */}
+            {/* Selected indicator - black check in circle */}
             {selectedId === design.id && (
-              <div className="absolute top-2 right-2 rounded-full p-1" style={{ background: 'var(--text-primary)' }}>
-                <svg className="w-4 h-4" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
+                <svg className="w-4 h-4" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
@@ -129,7 +135,7 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId }: Wallpap
 
           {/* Name below image */}
           <div className="mt-2 px-1">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+            <p className={`text-sm font-medium transition-colors ${selectedId === design.id ? 'text-primary' : ''}`} style={{ color: selectedId === design.id ? 'var(--gold)' : 'var(--text-primary)' }}>
               {design.name}
             </p>
             <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>

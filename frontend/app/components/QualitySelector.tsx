@@ -26,25 +26,26 @@ export default function QualitySelector({ selectedId, onSelect }: QualitySelecto
         <div
           key={option.id}
           onClick={() => onSelect(option.id)}
-          className="card cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-1"
+          className="card cursor-pointer transition-all duration-300 hover:shadow-md"
           style={{
-            border: selectedId === option.id ? '2px solid var(--text-primary)' : '1px solid var(--border-light)',
-            boxShadow: selectedId === option.id ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+            border: selectedId === option.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+            boxShadow: selectedId === option.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'var(--shadow-sm)',
             padding: '16px',
-            textAlign: 'center'
+            textAlign: 'center',
+            position: 'relative'
           }}
         >
-          {/* Selection Indicator */}
+          {/* Selection Indicator - black check in circle */}
           {selectedId === option.id && (
-            <div className="absolute top-2 right-2 rounded-full p-1" style={{ background: 'var(--text-primary)' }}>
-              <svg className="w-3 h-3" style={{ color: 'var(--bg-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
+              <svg className="w-3 h-3" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
               </svg>
             </div>
           )}
 
           {/* Quality Name */}
-          <div className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <div className="text-lg font-semibold mb-1" style={{ color: selectedId === option.id ? 'var(--gold)' : 'var(--text-primary)' }}>
             {option.name}
           </div>
 
@@ -54,7 +55,7 @@ export default function QualitySelector({ selectedId, onSelect }: QualitySelecto
           </div>
 
           {/* Estimated Time */}
-          <div className="text-xs font-medium px-2 py-1 rounded-full inline-block" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+          <div className="text-xs font-medium px-2 py-1 rounded-full inline-block" style={{ background: selectedId === option.id ? 'var(--gold)' : 'var(--bg-secondary)', color: selectedId === option.id ? '#ffffff' : 'var(--text-secondary)' }}>
             {option.estimatedTime}
           </div>
         </div>

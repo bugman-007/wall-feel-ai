@@ -3,6 +3,7 @@
 import { useCallback, useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
+import CameraCapture from './CameraCapture'
 
 interface ImageUploadProps {
   onImageSelect: (file: File, preview: string, uploadedUrl?: string) => void
@@ -141,18 +142,27 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     setUploadProgress(0)
   }
 
+  const handleCameraCapture = (file: File) => {
+    setFileName(file.name)
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
+    uploadToBackend(file, previewUrl)
+    setShowCamera(false)
+  }
+
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
         <div
           {...getRootProps()}
-          className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+          className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
           style={{
             borderStyle: isDragActive ? 'solid' : 'dashed',
             borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
             background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
             opacity: uploading ? 0.5 : 1,
-            cursor: uploading ? 'not-allowed' : 'pointer'
+            cursor: uploading ? 'not-allowed' : 'pointer',
+            position: 'relative'
           }}
         >
           <input {...getInputProps()} />
@@ -167,6 +177,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
           />
 
           <div className="space-y-4">
+
             <div className="flex justify-center">
               <svg
                 className="w-16 h-16"
@@ -220,14 +231,22 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative rounded-lg overflow-hidden card">
+          <div className="relative rounded-lg overflow-hidden card" style={{ background: 'var(--bg-secondary)' }}>
             <Image
               src={preview}
               alt="Uploaded room"
-              width={800}
-              height={600}
+              width={1200}
+              height={800}
               className="w-full h-auto"
               unoptimized
+              onLoad={(e) => {
+                const target = e.target as HTMLImageElement;
+                const container = target.parentElement;
+                if (container) {
+                  container.style.minHeight = 'auto';
+                  container.style.height = 'auto';
+                }
+              }}
             />
 
             {/* Upload overlay */}
@@ -303,6 +322,13 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             </p>
           </div>
         </div>
+      )}
+
+      {showCamera && (
+        <CameraCapture
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
       )}
     </div>
   )
