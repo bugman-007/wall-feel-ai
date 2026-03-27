@@ -343,8 +343,9 @@ def generate_wallpaper_preview_gemini(
         native_quality = '4k' if is_upscale_mode else quality
         gemini_size = GEMINI_IMAGE_SIZES.get(native_quality, '1K')
 
-        # Generate preview with AFC disabled
+        # Generate preview
         # Note: Native image_size config not available in current SDK version; we handle resize locally
+        # Note: AFC is disabled by default for image generation models
         response = client.models.generate_content(
             model='gemini-3.1-flash-image-preview',
             contents=[
@@ -353,10 +354,7 @@ def generate_wallpaper_preview_gemini(
                 wallpaper_image
             ],
             config=types.GenerateContentConfig(
-                response_modalities=['IMAGE'],
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    disable=True
-                )
+                response_modalities=['IMAGE']
             )
         )
 
