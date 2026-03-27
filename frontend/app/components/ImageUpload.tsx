@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useState, useEffect, useRef, type ChangeEvent } from 'react'
+import { useCallback, useState, useEffect, type ChangeEvent } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
+import CameraCapture from './CameraCapture'
 
 interface ImageUploadProps {
   onImageSelect: (file: File, preview: string, uploadedUrl?: string) => void
@@ -14,7 +15,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [fileName, setFileName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const [showCamera, setShowCamera] = useState(false)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -103,21 +104,12 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     }
   }, [preview, uploadToBackend])
 
-  const onCameraFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setError(null)
-    const file = event.target.files?.[0]
-    if (!file) return
-
+  const handleCameraCapture = (file: File) => {
     setFileName(file.name)
-
-    if (preview) {
-      URL.revokeObjectURL(preview)
-    }
-
     const previewUrl = URL.createObjectURL(file)
     setPreview(previewUrl)
     uploadToBackend(file, previewUrl)
-    event.target.value = ''
+    setShowCamera(false)
   }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -144,133 +136,133 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   return (
     <div className="w-full max-w-4xl mx-auto">
       {!preview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Left Card: Upload from Gallery */}
-          <div
-            {...getRootProps()}
-            className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
-            style={{
-              borderStyle: isDragActive ? 'solid' : 'dashed',
-              borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
-              background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
-              opacity: uploading ? 0.5 : 1,
-              cursor: uploading ? 'not-allowed' : 'pointer',
-              position: 'relative'
-            }}
-          >
-            <input {...getInputProps()} />
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Left Card: Upload from Gallery */}
+            <div
+              {...getRootProps()}
+              className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
+              style={{
+                borderStyle: isDragActive ? 'solid' : 'dashed',
+                borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
+                background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                opacity: uploading ? 0.5 : 1,
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                position: 'relative'
+              }}
+            >
+              <input {...getInputProps()} />
 
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <svg
-                  className="w-16 h-16"
-                  style={{ color: 'var(--text-muted)' }}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-              </div>
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <svg
+                    className="w-16 h-16"
+                    style={{ color: 'var(--text-muted)' }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                </div>
 
-              {isDragActive ? (
-                <p className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                  Drop your image here
+                {isDragActive ? (
+                  <p className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                    Drop your image here
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      Drag & drop your room photo
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      or click to browse gallery
+                    </p>
+                  </>
+                )}
+
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Supports: JPEG, PNG (max 10MB)
                 </p>
-              ) : (
-                <>
+              </div>
+            </div>
+
+            {/* Right Card: Take a Photo */}
+            <div
+              className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+              style={{
+                border: '1px solid var(--border-light)',
+                background: 'var(--bg-card)',
+                opacity: uploading ? 0.5 : 1,
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                position: 'relative'
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowCamera(true)
+              }}
+            >
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <svg
+                    className="w-16 h-16"
+                    style={{ color: 'var(--gold)' }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                </div>
+
+                <div>
                   <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-                    Drag & drop your room photo
+                    Take a Photo
                   </p>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    or click to browse gallery
+                    Use your camera to capture room
                   </p>
-                </>
-              )}
+                </div>
 
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Supports: JPEG, PNG (max 10MB)
-              </p>
-            </div>
-          </div>
-
-          {/* Right Card: Take a Photo */}
-          <div
-            className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
-            style={{
-              border: '1px solid var(--border-light)',
-              background: 'var(--bg-card)',
-              opacity: uploading ? 0.5 : 1,
-              cursor: uploading ? 'not-allowed' : 'pointer',
-              position: 'relative'
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              cameraInputRef.current?.click()
-            }}
-          >
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={onCameraFileChange}
-              disabled={uploading}
-            />
-
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <svg
-                  className="w-16 h-16"
-                  style={{ color: 'var(--gold)' }}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                <button
+                  type="button"
+                  className="gold-btn"
+                  disabled={uploading}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowCamera(true)
+                  }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
+                  Open Camera
+                </button>
               </div>
-
-              <div>
-                <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  Take a Photo
-                </p>
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                  Use your camera to capture room
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className="gold-btn"
-                disabled={uploading}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  cameraInputRef.current?.click()
-                }}
-              >
-                Open Camera
-              </button>
             </div>
           </div>
-        </div>
+
+          {/* Camera Capture Modal */}
+          {showCamera && (
+            <CameraCapture
+              onCapture={handleCameraCapture}
+              onClose={() => setShowCamera(false)}
+            />
+          )}
+        </>
       ) : (
         <div className="space-y-4">
           <div className="relative rounded-lg overflow-hidden card" style={{ background: 'var(--bg-secondary)' }}>
