@@ -15,7 +15,6 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
-  const localInputRef = useRef<HTMLInputElement | null>(null)
 
   // Cleanup preview URL on unmount
   useEffect(() => {
@@ -69,22 +68,6 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     }
   }, [onImageSelect])
 
-  const processSelectedFile = useCallback((file: File) => {
-    setFileName(file.name)
-
-    // Revoke old preview URL to prevent memory leak
-    if (preview) {
-      URL.revokeObjectURL(preview)
-    }
-
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file)
-    setPreview(previewUrl)
-
-    // Upload to backend
-    uploadToBackend(file, previewUrl)
-  }, [preview, uploadToBackend])
-
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setError(null)
 
@@ -103,15 +86,37 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
     // Handle accepted file
     if (acceptedFiles.length > 0) {
-      processSelectedFile(acceptedFiles[0])
-    }
-  }, [processSelectedFile])
+      const file = acceptedFiles[0]
+      setFileName(file.name)
 
-  const onFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+      // Revoke old preview URL to prevent memory leak
+      if (preview) {
+        URL.revokeObjectURL(preview)
+      }
+
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file)
+      setPreview(previewUrl)
+
+      // Upload to backend
+      uploadToBackend(file, previewUrl)
+    }
+  }, [preview, uploadToBackend])
+
+  const onCameraFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     setError(null)
     const file = event.target.files?.[0]
     if (!file) return
-    processSelectedFile(file)
+
+    setFileName(file.name)
+
+    if (preview) {
+      URL.revokeObjectURL(preview)
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
+    uploadToBackend(file, previewUrl)
     event.target.value = ''
   }
 
@@ -123,8 +128,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     },
     maxSize: 10 * 1024 * 1024, // 10MB
     multiple: false,
-    disabled: uploading,
-    noClick: true
+    disabled: uploading
   })
 
   const clearImage = () => {
@@ -158,15 +162,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             accept="image/*"
             capture="environment"
             className="hidden"
-            onChange={onFileInputChange}
-            disabled={uploading}
-          />
-          <input
-            ref={localInputRef}
-            type="file"
-            accept="image/jpeg,image/png"
-            className="hidden"
-            onChange={onFileInputChange}
+            onChange={onCameraFileChange}
             disabled={uploading}
           />
 
@@ -207,22 +203,17 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               Supports: JPEG, PNG (max 10MB)
             </p>
 
-            <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={uploading}
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                Take a Photo
-              </button>
+            <div className="pt-2">
               <button
                 type="button"
                 className="btn-secondary"
                 disabled={uploading}
-                onClick={() => localInputRef.current?.click()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  cameraInputRef.current?.click()
+                }}
               >
-                Upload from Device
+                Take a Photo
               </button>
             </div>
           </div>
