@@ -140,14 +140,25 @@ export default function PreviewDisplay({
 
         {/* Slider Line */}
         <div
-          className="absolute top-0 bottom-0 w-1 shadow-lg cursor-col-resize"
-          style={{ left: `${sliderPosition}%`, background: 'var(--text-primary)' }}
+          className="absolute top-0 bottom-0 w-1.5 shadow-xl cursor-col-resize"
+          style={{
+            left: `${sliderPosition}%`,
+            background: '#c8aa75',
+            boxShadow: '0 0 10px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.3)'
+          }}
         >
           {/* Slider Handle */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full shadow-lg flex items-center justify-center" style={{ background: 'var(--text-primary)' }}>
+          <div
+            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full shadow-xl flex items-center justify-center"
+            style={{
+              background: '#c8aa75',
+              border: '3px solid rgba(255,255,255,0.8)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+            }}
+          >
             <svg
-              className="w-4 h-4"
-              style={{ color: 'var(--bg-primary)' }}
+              className="w-5 h-5"
+              style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -155,7 +166,7 @@ export default function PreviewDisplay({
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 d="M8 9l4-4 4 4m0 6l-4 4-4-4"
               />
             </svg>
