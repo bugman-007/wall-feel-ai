@@ -16,6 +16,14 @@ from ai_wall_detector import generate_wallpaper_preview_ai, QualityLevel
 from typing import List, Dict, Any, Optional, Literal
 import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from shopify_client import get_shopify_client, close_shopify_client
+from catalog_normalizer import (
+    normalize_product,
+    normalize_collection,
+    product_to_dict,
+    build_category_groups,
+    normalize_collection as normalize_shopify_collection
+)
 
 load_dotenv()
 
@@ -47,6 +55,13 @@ app.add_middleware(
 # Add security middleware
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up Shopify client on shutdown."""
+    await close_shopify_client()
+
 
 @app.get("/")
 def read_root():
@@ -98,11 +113,23 @@ _catalog_cache: Optional[Dict] = None
 _catalog_cache_timestamp: float = 0
 _CATALOG_CACHE_TTL = 300  # 5 minutes cache TTL
 
+# Cache for Shopify data (separate from static catalog)
+_shopify_catalog_cache: Optional[Dict] = None
+_shopify_catalog_timestamp: float = 0
+_SHOPIFY_CACHE_TTL = 300  # 5 minutes cache TTL
+
+# Cache for category groups
+_category_groups_cache: Optional[List] = None
+_category_groups_timestamp: float = 0
+_CATEGORY_GROUPS_CACHE_TTL = 600  # 10 minutes - categories change less often
+
 
 def _get_catalog() -> Dict:
     """
     Get wallpaper catalog with caching.
     Used by both /api/catalog and /api/ai-generate-preview endpoints.
+
+    Tries to fetch from Shopify first, falls back to static catalog.json.
     """
     global _catalog_cache, _catalog_cache_timestamp
 
@@ -112,6 +139,58 @@ def _get_catalog() -> Dict:
     if _catalog_cache is not None and (current_time - _catalog_cache_timestamp) < _CATALOG_CACHE_TTL:
         return _catalog_cache
 
+    # Try Shopify first
+    try:
+        import asyncio
+        from shopify_client import get_shopify_client
+        from catalog_normalizer import normalize_product, product_to_dict
+
+        client = get_shopify_client()
+
+        # Check if Shopify is configured
+        if client.config.store_url and client.config.access_token:
+            # Fetch products from Shopify
+            products = asyncio.run(client.get_all_products(products_per_page=50, variants_first=250))
+
+            if products:
+                # Normalize to legacy format for backwards compatibility
+                designs = []
+                for product in products:
+                    normalized = normalize_product(product)
+                    if normalized.image:  # Only include products with images
+                        designs.append({
+                            "id": normalized.handle,  # Use handle as ID for compatibility
+                            "name": normalized.title,
+                            "category": normalized.app_categories[0] if normalized.app_categories else "default",
+                            "thumbnail_url": normalized.image,
+                            "full_url": normalized.image,  # Same URL, backend can resize if needed
+                            "description": normalized.description or "",
+                            # Shopify-specific data
+                            "shopify_id": normalized.id,
+                            "handle": normalized.handle,
+                            "materials": [
+                                {
+                                    "variantId": m.variant_id,
+                                    "name": m.name,
+                                    "price": m.price,
+                                    "currency": m.currency,
+                                    "available": m.available
+                                }
+                                for m in normalized.materials
+                            ]
+                        })
+
+                if designs:
+                    _catalog_cache = {"designs": designs}
+                    _catalog_cache_timestamp = current_time
+                    logger.info(f"Loaded {len(designs)} products from Shopify")
+                    return _catalog_cache
+
+    except Exception as e:
+        logger.warning(f"Shopify catalog fetch failed, falling back to static: {e}")
+        # Continue to static catalog fallback
+
+    # Fallback to static catalog.json
     try:
         catalog_path = Path(__file__).parent / "catalog.json"
         with open(catalog_path, 'r') as f:
@@ -136,8 +215,170 @@ def get_catalog():
     Returns list of available wallpaper designs
 
     Performance: Catalog is cached for 5 minutes to reduce file I/O
+
+    NOTE: This endpoint now returns Shopify data if available,
+    falling back to static catalog.json if Shopify is not configured.
     """
     return _get_catalog()
+
+
+# ============== Shopify Catalog Endpoints ==============
+
+@app.get("/api/catalog/groups")
+async def get_category_groups():
+    """
+    Get grouped categories for browsing.
+
+    Returns categories organized by type:
+    - Style: Modern, Marble, Geometric, etc.
+    - Space: Homes, Hotel, Restaurant, etc.
+    - Audience: Children, Educational, etc.
+    - Theme: Animal, Motivation, etc.
+    - Custom: Custom designs
+
+    Cache: 10 minutes (categories change infrequently)
+    """
+    global _category_groups_cache, _category_groups_timestamp
+
+    current_time = time.time()
+
+    # Return cached groups if still valid
+    if _category_groups_cache is not None and (current_time - _category_groups_timestamp) < _CATEGORY_GROUPS_CACHE_TTL:
+        return {"groups": _category_groups_cache}
+
+    try:
+        client = get_shopify_client()
+        collections = await client.get_collections(first=250)
+
+        # Build grouped categories
+        groups = build_category_groups(collections)
+        _category_groups_cache = groups
+        _category_groups_timestamp = current_time
+
+        return {"groups": groups}
+
+    except Exception as e:
+        logger.error(f"Error fetching category groups: {e}", exc_info=True)
+        # Return empty groups on error (frontend will handle gracefully)
+        return {"groups": []}
+
+
+@app.get("/api/catalog/collections")
+async def get_collections():
+    """
+    Get all Shopify collections (flat list).
+
+    Returns basic collection info for filter UI.
+    Cache: 5 minutes
+    """
+    try:
+        client = get_shopify_client()
+        collections = await client.get_collections(first=250)
+
+        # Normalize collections
+        normalized = [normalize_shopify_collection(c) for c in collections]
+
+        return {"collections": normalized}
+
+    except Exception as e:
+        logger.error(f"Error fetching collections: {e}", exc_info=True)
+        return {"collections": []}
+
+
+@app.get("/api/catalog/products")
+async def get_products(
+    collection: Optional[str] = None,
+    category: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Get products with optional filtering.
+
+    Query params:
+    - collection: Filter by Shopify collection handle (e.g., "modern")
+    - category: Filter by app category (matches Style, Space, etc.)
+    - limit: Max products to return (default 50)
+
+    Returns normalized product data ready for frontend display.
+    Cache: 5 minutes
+    """
+    try:
+        client = get_shopify_client()
+
+        if collection:
+            # Fetch products from specific collection
+            products = await client.get_collection_products_paginated(
+                handle=collection,
+                products_per_page=limit,
+                variants_first=250
+            )
+        elif category:
+            # Fetch all products and filter by category
+            # This is less efficient but necessary for cross-collection categories
+            all_products = await client.get_all_products(
+                products_per_page=100,
+                variants_first=250
+            )
+            # Filter by category (check tags and collections)
+            category_lower = category.lower()
+            products = [
+                p for p in all_products
+                if category_lower in [t.lower() for t in p.get("tags", [])]
+                or category_lower in [c.get("handle", "").lower() for c in p.get("collections", [])]
+            ][:limit]
+        else:
+            # Fetch all products
+            products = await client.get_all_products(
+                products_per_page=limit,
+                variants_first=250
+            )
+
+        # Normalize products
+        normalized = [normalize_product(p) for p in products]
+        product_dicts = [product_to_dict(p) for p in normalized]
+
+        # Add collection handles to each product for filtering
+        if collection and products:
+            # Fetch collection info to include handles
+            collection_data = await client.get_collection_by_handle(collection)
+            if collection_data:
+                for product_dict in product_dicts:
+                    if "shopifyCollections" not in product_dict:
+                        product_dict["shopifyCollections"] = []
+                    if collection not in product_dict["shopifyCollections"]:
+                        product_dict["shopifyCollections"].append(collection)
+
+        return {"products": product_dicts}
+
+    except Exception as e:
+        logger.error(f"Error fetching products: {e}", exc_info=True)
+        return {"products": []}
+
+
+@app.get("/api/catalog/product/{handle}")
+async def get_product(handle: str):
+    """
+    Get single product by handle.
+
+    Returns full product details including all variants/materials.
+    Used for product detail views and AI preview generation.
+    """
+    try:
+        client = get_shopify_client()
+        product = await client.get_product_by_handle(handle)
+
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        normalized = normalize_product(product)
+        return product_to_dict(normalized)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching product {handle}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch product: {str(e)}")
+
 
 @app.post("/api/upload")
 async def upload_image(file: UploadFile = File(...)):
@@ -348,14 +589,59 @@ async def ai_generate_preview(request: DirectPreviewRequest):
     try:
         logger.info(f"AI preview generation requested: wallpaper={request.wallpaper_id}, quality={request.quality}")
 
-        # Get wallpaper from catalog using shared cached loader
-        catalog = _get_catalog()
+        # Try to get wallpaper URL from Shopify first (new flow)
+        wallpaper_url = None
 
-        wallpaper = next((w for w in catalog['designs'] if w['id'] == request.wallpaper_id), None)
-        if not wallpaper:
-            raise HTTPException(status_code=404, detail="Wallpaper not found")
+        # Check if this is a Shopify product handle
+        # Shopify handles are like "golden-oak-slat-wallpaper", old IDs are like "floral-001"
+        # Also check if it starts with "gid://" which is a Shopify ID
+        is_shopify_handle = request.wallpaper_id and (
+            request.wallpaper_id.startswith('gid://') or
+            (
+                '-' in request.wallpaper_id and
+                not any(request.wallpaper_id.startswith(prefix) for prefix in [
+                    'floral-', 'geometric-', 'botanical-', 'abstract-',
+                    'minimalist-', 'texture-', 'vintage-', 'cherry-',
+                    'marble-', 'damask-'
+                ])
+            )
+        )
 
-        wallpaper_url = wallpaper['full_url']
+        logger.info(f"Wallpaper ID analysis: is_shopify_handle={is_shopify_handle}, id={request.wallpaper_id}")
+
+        if is_shopify_handle:
+            try:
+                # Fetch product from Shopify
+                client = get_shopify_client()
+                product = await client.get_product_by_handle(request.wallpaper_id)
+                if product:
+                    normalized = normalize_product(product)
+                    wallpaper_url = normalized.image
+                    logger.info(f"Found Shopify product: {request.wallpaper_id}, image: {wallpaper_url[:50]}...")
+                else:
+                    logger.warning(f"Shopify product not found: {request.wallpaper_id}")
+            except Exception as e:
+                logger.error(f"Failed to fetch Shopify product {request.wallpaper_id}: {e}", exc_info=True)
+
+        # Fallback to old catalog format
+        if not wallpaper_url:
+            logger.info(f"Trying fallback to static catalog for: {request.wallpaper_id}")
+            try:
+                catalog = _get_catalog()
+                logger.info(f"Catalog loaded: {len(catalog.get('designs', []))} designs")
+                wallpaper = next((w for w in catalog['designs'] if w['id'] == request.wallpaper_id), None)
+                if not wallpaper:
+                    # Debug: log first few IDs to see what's in the catalog
+                    first_few_ids = [d['id'] for d in catalog.get('designs', [])[:3]]
+                    logger.error(f"Wallpaper not found in catalog. First 3 IDs: {first_few_ids}")
+                    raise HTTPException(status_code=404, detail=f"Wallpaper '{request.wallpaper_id}' not found")
+                wallpaper_url = wallpaper['full_url']
+                logger.info(f"Found wallpaper in static catalog: {request.wallpaper_id}, url: {wallpaper_url[:50]}...")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error loading catalog: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to load catalog: {str(e)}")
 
         # Get cached room image bytes (cached during upload)
         from ai_wall_detector import _get_cached_room_image

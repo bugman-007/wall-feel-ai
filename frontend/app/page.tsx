@@ -6,6 +6,7 @@ import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
 import PreviewDisplay from './components/PreviewDisplay'
 import QualitySelector from './components/QualitySelector'
+import CategoryFilter from './components/CategoryFilter'
 
 interface WallpaperDesign {
   id: string
@@ -24,7 +25,6 @@ const features = [
 ]
 
 const steps = ['Upload Your Space', 'Choose Style & Material or Create Your Own', 'AI Generates Preview', 'Order Your Design']
-const categories = ['Modern', 'Afrocentric', 'Minimalist', 'Corporate', 'Hospitality']
 const partnerTypes = ['Restaurants', 'Hotels', 'Offices', 'Real Estate', 'Staging']
 
 const galleryImages = [
@@ -46,6 +46,7 @@ export default function Home() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -263,21 +264,33 @@ export default function Home() {
           <ImageUpload onImageSelect={handleImageSelect} />
         </div>
 
-        {/* Step 2: Choose Wallpaper */}
+        {/* Step 2: Choose Category */}
         {selectedImage && (
           <div className="step-section">
-            <h3 className="step-title">2. Choose Your Wallpaper Design</h3>
-            <WallpaperGrid
-              onWallpaperSelect={handleWallpaperSelect}
-              selectedId={selectedWallpaper?.id}
+            <h3 className="step-title">2. Browse Categories</h3>
+            <CategoryFilter
+              selectedCategory={selectedCategory}
+              onCategorySelect={setSelectedCategory}
             />
           </div>
         )}
 
-        {/* Step 3: Choose Quality */}
+        {/* Step 3: Choose Wallpaper */}
+        {selectedImage && (
+          <div className="step-section">
+            <h3 className="step-title">{selectedCategory ? `3. Choose ${selectedCategory} Designs` : '3. Choose Your Wallpaper Design'}</h3>
+            <WallpaperGrid
+              onWallpaperSelect={handleWallpaperSelect}
+              selectedId={selectedWallpaper?.id}
+              selectedCategory={selectedCategory}
+            />
+          </div>
+        )}
+
+        {/* Step 4: Choose Quality */}
         {selectedImage && selectedWallpaper && !previewUrl && (
           <div className="step-section">
-            <h3 className="step-title">3. Choose Output Quality</h3>
+            <h3 className="step-title">4. Choose Output Quality</h3>
             <QualitySelector
               selectedId={selectedQuality}
               onSelect={setSelectedQuality}
@@ -285,10 +298,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 4: Generate Preview */}
+        {/* Step 5: Generate Preview */}
         {selectedImage && selectedWallpaper && !previewUrl && (
           <div className="step-section">
-            <h3 className="step-title">4. Generate Preview</h3>
+            <h3 className="step-title">5. Generate Preview</h3>
             <div className="card" style={{ maxWidth: '600px', margin: '0 auto', padding: '32px', textAlign: 'center' }}>
               <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                 AI will automatically detect walls and apply the wallpaper

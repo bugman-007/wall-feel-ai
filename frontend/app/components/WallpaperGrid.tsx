@@ -3,41 +3,84 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 
+interface Material {
+  variantId: string
+  name: string
+  price: number
+  currency: string
+  available: boolean
+  compareAtPrice?: number | null
+}
+
 interface WallpaperDesign {
   id: string
+  handle?: string
   name: string
+  title?: string
   category: string
+  appCategories?: string[]
   thumbnail_url: string
+  image?: string
   full_url: string
   description: string
+  materials?: Material[]
+  shopifyCollections?: string[]
+  tags?: string[]
+  available?: boolean
 }
 
 interface WallpaperGridProps {
   onWallpaperSelect: (design: WallpaperDesign) => void
   selectedId?: string | null
+  selectedCategory?: string | null
 }
 
-export default function WallpaperGrid({ onWallpaperSelect, selectedId }: WallpaperGridProps) {
+export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedCategory }: WallpaperGridProps) {
   const [designs, setDesigns] = useState<WallpaperDesign[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchCatalog()
-  }, [])
+  }, [selectedCategory])
 
   const fetchCatalog = async () => {
     try {
       setLoading(true)
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/catalog`)
+
+      // Fetch from Shopify-backed endpoint with optional category filter
+      const url = selectedCategory
+        ? `${apiUrl}/api/catalog/products?category=${encodeURIComponent(selectedCategory)}`
+        : `${apiUrl}/api/catalog/products`
+
+      const response = await fetch(url)
 
       if (!response.ok) {
         throw new Error('Failed to fetch catalog')
       }
 
       const data = await response.json()
-      setDesigns(data.designs || [])
+
+      // Normalize Shopify data to our interface
+      const normalizedDesigns = (data.products || []).map((product: any) => ({
+        id: product.handle || product.id,
+        handle: product.handle,
+        name: product.title || product.name,
+        title: product.title,
+        category: product.appCategories?.[0] || product.shopifyCollections?.[0] || 'default',
+        appCategories: product.appCategories || [],
+        thumbnail_url: product.image || '',
+        image: product.image,
+        full_url: product.image || '',
+        description: product.description || '',
+        materials: product.materials || [],
+        shopifyCollections: product.shopifyCollections || [],
+        tags: product.tags || [],
+        available: product.available !== false
+      }))
+
+      setDesigns(normalizedDesigns)
       setError(null)
     } catch (err) {
       setError('Failed to load wallpaper designs. Please try again.')
