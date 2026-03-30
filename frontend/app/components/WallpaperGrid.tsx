@@ -39,9 +39,15 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedC
   const [designs, setDesigns] = useState<WallpaperDesign[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(0)
+
+  const ITEMS_PER_PAGE = 12 // 3 rows x 4 columns on large screens
+  const totalPages = Math.ceil(designs.length / ITEMS_PER_PAGE)
+  const paginatedDesigns = designs.slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
 
   useEffect(() => {
     fetchCatalog()
+    setCurrentPage(0) // Reset pagination when category changes
   }, [selectedCategory])
 
   const fetchCatalog = async () => {
@@ -128,65 +134,102 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedC
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {designs.map((design) => (
-        <button
-          key={design.id}
-          onClick={() => onWallpaperSelect(design)}
-          className="group relative rounded-xl overflow-hidden transition-all duration-300 hover:scale-105 card"
-          style={{
-            border: selectedId === design.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
-            boxShadow: selectedId === design.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'none',
-            transform: selectedId === design.id ? 'scale(1.02)' : 'none'
-          }}
-        >
-          {/* Gold glow overlay for selected state */}
-          {selectedId === design.id && (
-            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 2px var(--gold)', zIndex: 10 }} />
-          )}
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {paginatedDesigns.map((design) => (
+          <button
+            key={design.id}
+            onClick={() => onWallpaperSelect(design)}
+            className="group relative overflow-hidden transition-all duration-300 hover:scale-105 card"
+            style={{
+              border: selectedId === design.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
+              boxShadow: selectedId === design.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'none',
+              transform: selectedId === design.id ? 'scale(1.02)' : 'none'
+            }}
+          >
+            {/* Gold glow overlay for selected state */}
+            {selectedId === design.id && (
+              <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 2px var(--gold)', zIndex: 10 }} />
+            )}
 
-          <div className="aspect-square relative" style={{ background: 'var(--bg-secondary)' }}>
-            <Image
-              src={design.thumbnail_url}
-              alt={design.name}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            />
+            <div className="aspect-square relative" style={{ background: 'var(--bg-secondary)' }}>
+              <Image
+                src={design.thumbnail_url}
+                alt={design.name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              />
 
-            {/* Overlay on hover */}
-            <div className="absolute inset-0 transition-opacity duration-200 flex items-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', opacity: 0 }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}>
-              <div className="w-full p-3">
-                <p className="text-white text-sm font-medium truncate">
-                  {design.name}
-                </p>
-                <p className="text-white/80 text-xs truncate">
-                  {design.description}
-                </p>
+              {/* Overlay on hover */}
+              <div className="absolute inset-0 transition-opacity duration-200 flex items-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', opacity: 0 }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}>
+                <div className="w-full p-3">
+                  <p className="text-white text-sm font-medium truncate">
+                    {design.name}
+                  </p>
+                  <p className="text-white/80 text-xs truncate">
+                    {design.description}
+                  </p>
+                </div>
               </div>
+
+              {/* Selected indicator - black check in circle */}
+              {selectedId === design.id && (
+                <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
+                  <svg className="w-4 h-4" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
             </div>
 
-            {/* Selected indicator - black check in circle */}
-            {selectedId === design.id && (
-              <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
-                <svg className="w-4 h-4" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            )}
-          </div>
+            {/* Name below image */}
+            <div className="mt-2 px-1">
+              <p className={`text-sm font-medium transition-colors ${selectedId === design.id ? 'text-primary' : ''}`} style={{ color: selectedId === design.id ? 'var(--gold)' : 'var(--text-primary)' }}>
+                {design.name}
+              </p>
+              <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
+                {design.category}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
 
-          {/* Name below image */}
-          <div className="mt-2 px-1">
-            <p className={`text-sm font-medium transition-colors ${selectedId === design.id ? 'text-primary' : ''}`} style={{ color: selectedId === design.id ? 'var(--gold)' : 'var(--text-primary)' }}>
-              {design.name}
-            </p>
-            <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
-              {design.category}
-            </p>
-          </div>
-        </button>
-      ))}
-    </div>
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-2 mt-6">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+            disabled={currentPage === 0}
+            className="px-4 py-2 rounded-lg font-medium transition-colors"
+            style={{
+              background: currentPage === 0 ? 'var(--border-light)' : 'var(--gold)',
+              color: currentPage === 0 ? 'var(--text-muted)' : '#ffffff',
+              cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
+              opacity: currentPage === 0 ? 0.5 : 1
+            }}
+          >
+            Previous
+          </button>
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Page {currentPage + 1} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={currentPage === totalPages - 1}
+            className="px-4 py-2 rounded-lg font-medium transition-colors"
+            style={{
+              background: currentPage === totalPages - 1 ? 'var(--border-light)' : 'var(--gold)',
+              color: currentPage === totalPages - 1 ? 'var(--text-muted)' : '#ffffff',
+              cursor: currentPage === totalPages - 1 ? 'not-allowed' : 'pointer',
+              opacity: currentPage === totalPages - 1 ? 0.5 : 1
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </>
   )
 }

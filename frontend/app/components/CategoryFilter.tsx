@@ -80,12 +80,12 @@ export default function CategoryFilter({ selectedCategory, onCategorySelect }: C
       {/* Category Groups */}
       <div className="space-y-4">
         {groups.map((group) => (
-          <div key={group.name} className="rounded-lg overflow-hidden" style={{ background: 'var(--panel)' }}>
+          <div key={group.name} className="overflow-hidden" style={{ background: 'var(--panel)', border: '1px solid var(--border-light)' }}>
             {/* Group Header */}
             <button
               onClick={() => toggleGroup(group.name)}
               className="w-full px-4 py-3 flex items-center justify-between transition-colors hover:bg-opacity-50"
-              style={{ background: 'var(--bg-secondary)' }}
+              style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)' }}
             >
               <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {group.name}
@@ -110,15 +110,16 @@ export default function CategoryFilter({ selectedCategory, onCategorySelect }: C
                     <button
                       key={category}
                       onClick={() => handleCategoryClick(category)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                      className={`px-3 py-1.5 text-sm font-medium transition-all ${
                         isSelected
                           ? 'text-white'
                           : 'hover:bg-opacity-50'
                       }`}
                       style={{
                         background: isSelected ? 'var(--gold)' : 'var(--bg-secondary)',
-                        border: isSelected ? '1px solid var(--gold)' : '1px solid var(--border-light)',
-                        color: isSelected ? 'white' : 'var(--text-secondary)'
+                        border: '1px solid ' + (isSelected ? 'var(--gold)' : 'var(--border-light)'),
+                        color: isSelected ? 'white' : 'var(--text-secondary)',
+                        borderRadius: isSelected ? '0' : '4px'
                       }}
                     >
                       {category}
