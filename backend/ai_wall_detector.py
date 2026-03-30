@@ -421,8 +421,26 @@ def generate_wallpaper_preview_gemini(
         }
 
     except Exception as e:
-        logger.error(f"Preview generation error: {str(e)}", exc_info=True)
-        return None
+        error_message = str(e)
+        logger.error(f"Preview generation error: {error_message}", exc_info=True)
+
+        # Return structured error information for better user messaging
+        error_info = {
+            "error": error_message,
+            "error_type": type(e).__name__
+        }
+
+        # Detect specific error types for better user messaging
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            error_info["user_message"] = "AI service is temporarily busy due to high demand. Please try again in a few moments."
+        elif "429" in error_message:
+            error_info["user_message"] = "Too many requests. Please wait a moment and try again."
+        elif "401" in error_message or "API key" in error_message:
+            error_info["user_message"] = "Authentication error. Please check your API configuration."
+        elif "timeout" in error_message.lower() or "timed out" in error_message.lower():
+            error_info["user_message"] = "Request timed out. Please check your connection and try again."
+
+        return error_info
 
 
 def generate_wallpaper_preview_ai(

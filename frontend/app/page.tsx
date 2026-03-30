@@ -23,7 +23,7 @@ const features = [
   { title: 'Custom Design Request', description: 'Work with our team to create tailored textures for unique spaces.' },
 ]
 
-const steps = ['Upload Your Space', 'Choose Style & Material', 'AI Generates Preview', 'Request Installation']
+const steps = ['Upload Your Space', 'Choose Style & Material or Create Your Own', 'AI Generates Preview', 'Order Your Design']
 const categories = ['Modern', 'Afrocentric', 'Minimalist', 'Corporate', 'Hospitality']
 const partnerTypes = ['Restaurants', 'Hotels', 'Offices', 'Real Estate', 'Staging']
 
@@ -95,14 +95,33 @@ export default function Home() {
 
       const data = await response.json()
 
+      // Check if this is a fallback response (AI generation failed)
+      if (data.fallback) {
+        // Extract meaningful error from backend
+        const errorDetails = data.error || 'AI service temporarily unavailable'
+        setGenerateError(
+          `AI service is currently busy. ${errorDetails.includes('503') ? 'The service is experiencing high demand - please try again in a few moments.' : errorDetails}`
+        )
+        return
+      }
+
       if (data.success && data.preview_url) {
         setPreviewUrl(data.preview_url)
       } else {
-        throw new Error('No preview URL in response')
+        throw new Error('Preview generation failed. Please try again.')
       }
 
     } catch (err: any) {
-      setGenerateError(err.message || 'Failed to generate preview. Please try again.')
+      // Provide user-friendly error messages
+      let userMessage = 'Failed to generate preview. Please try again.'
+
+      if (err.message?.includes('Failed to fetch')) {
+        userMessage = 'Cannot connect to server. Please check your internet connection.'
+      } else if (err.message?.includes('Preview generation failed')) {
+        userMessage = err.message
+      }
+
+      setGenerateError(userMessage)
       console.error('Generation error:', err)
     } finally {
       setIsGenerating(false)
@@ -301,14 +320,26 @@ export default function Home() {
 
         {/* Error Message */}
         {generateError && (
-          <div className="card" style={{ maxWidth: '600px', margin: '24px auto', borderColor: '#ef4444', padding: '16px' }}>
-            <div className="flex items-center space-x-3">
-              <svg className="w-5 h-5 flex-shrink-0" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="card" style={{ maxWidth: '600px', margin: '24px auto', borderColor: '#ef4444', padding: '20px', background: 'rgba(239, 68, 68, 0.05)' }}>
+            <div className="flex items-start space-x-3">
+              <svg className="w-6 h-6 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                {generateError}
-              </p>
+              <div style={{ flex: 1 }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  Preview Generation Failed
+                </p>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {generateError}
+                </p>
+                <button
+                  onClick={handleGeneratePreview}
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--gold)', marginTop: '12px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                >
+                  Try Again →
+                </button>
+              </div>
             </div>
           </div>
         )}

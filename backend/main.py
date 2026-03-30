@@ -380,39 +380,61 @@ async def ai_generate_preview(request: DirectPreviewRequest):
         else:
             # Fall back to mock - return success=false to indicate this is NOT a real AI result
             logger.warning("AI preview generation failed, using mock fallback")
+
+            # Extract user-friendly error message if available
+            error_msg = result.get("user_message") if result else None
+            if not error_msg:
+                raw_error = result.get("error", "AI service temporarily unavailable") if result else "AI generation failed"
+                # Check for 503 or UNAVAILABLE in raw error
+                if "503" in raw_error or "UNAVAILABLE" in raw_error:
+                    error_msg = "AI service is currently busy due to high demand. Please try again in a few moments."
+                else:
+                    error_msg = raw_error
+
             return {
                 "success": False,
                 "fallback": True,
-                "preview_url": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop",
-                "description": "Wallpaper applied (mock fallback - AI generation failed)",
+                "preview_url": None,  # No mock image - force error display
+                "description": "AI preview generation failed",
                 "provider": "mock",
+                "error": error_msg,
                 "timing": {
                     "download_time": 0,
                     "generation_time": 0,
                     "postprocess_time": 0,
                     "upload_time": 0,
-                    "total_time": 0.1
+                    "total_time": 0
                 }
             }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"AI preview generation error: {str(e)}", exc_info=True)
-        # Return mock on error with success=false
+        error_message = str(e)
+        logger.error(f"AI preview generation error: {error_message}", exc_info=True)
+
+        # Generate user-friendly error message
+        user_message = error_message  # Default to raw error
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            user_message = "AI service is currently busy due to high demand. Please try again in a few moments."
+        elif "429" in error_message:
+            user_message = "Too many requests. Please wait a moment and try again."
+        elif "timeout" in error_message.lower():
+            user_message = "Request timed out. Please check your connection and try again."
+
         return {
             "success": False,
             "fallback": True,
-            "preview_url": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=800&fit=crop",
-            "description": f"Wallpaper applied (error fallback: {str(e)})",
+            "preview_url": None,
+            "description": "AI preview generation failed",
             "provider": "mock",
-            "error": str(e),
+            "error": user_message,
             "timing": {
                 "download_time": 0,
                 "generation_time": 0,
                 "postprocess_time": 0,
                 "upload_time": 0,
-                "total_time": 0.1
+                "total_time": 0
             }
         }
 
