@@ -278,7 +278,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-capture-btn {
-          background: none;
+          background: rgba(255, 255, 255, 0.15);
           border: 4px solid #fff;
           border-radius: 50%;
           width: 80px;
@@ -287,11 +287,13 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          transition: transform 0.15s;
+          transition: all 0.15s;
+          backdrop-filter: blur(4px);
         }
 
         .camera-capture-btn:active {
           transform: scale(0.95);
+          background: rgba(255, 255, 255, 0.25);
         }
 
         .capture-circle {
@@ -299,6 +301,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           height: 60px;
           border-radius: 50%;
           background: #fff;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .camera-retake-btn {
