@@ -589,59 +589,40 @@ async def ai_generate_preview(request: DirectPreviewRequest):
     try:
         logger.info(f"AI preview generation requested: wallpaper={request.wallpaper_id}, quality={request.quality}")
 
-        # Try to get wallpaper URL from Shopify first (new flow)
         wallpaper_url = None
 
-        # Check if this is a Shopify product handle
-        # Shopify handles are like "golden-oak-slat-wallpaper", old IDs are like "floral-001"
-        # Also check if it starts with "gid://" which is a Shopify ID
-        is_shopify_handle = request.wallpaper_id and (
-            request.wallpaper_id.startswith('gid://') or
-            (
-                '-' in request.wallpaper_id and
-                not any(request.wallpaper_id.startswith(prefix) for prefix in [
-                    'floral-', 'geometric-', 'botanical-', 'abstract-',
-                    'minimalist-', 'texture-', 'vintage-', 'cherry-',
-                    'marble-', 'damask-'
-                ])
+        # Always try Shopify first by handle
+        try:
+            client = get_shopify_client()
+            # Use asyncio.wait_for to add timeout (10 seconds for single product lookup)
+            product = await asyncio.wait_for(
+                client.get_product_by_handle(request.wallpaper_id),
+                timeout=10.0
             )
-        )
+            if product:
+                normalized = normalize_product(product)
+                wallpaper_url = normalized.image
+                logger.info(f"Found Shopify product by handle: {request.wallpaper_id}")
+            else:
+                logger.warning(f"Shopify product not found: {request.wallpaper_id}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Shopify lookup timed out for {request.wallpaper_id} (10s limit)")
+        except Exception as e:
+            logger.error(f"Shopify lookup failed for {request.wallpaper_id}: {e}", exc_info=True)
 
-        logger.info(f"Wallpaper ID analysis: is_shopify_handle={is_shopify_handle}, id={request.wallpaper_id}")
-
-        if is_shopify_handle:
-            try:
-                # Fetch product from Shopify
-                client = get_shopify_client()
-                product = await client.get_product_by_handle(request.wallpaper_id)
-                if product:
-                    normalized = normalize_product(product)
-                    wallpaper_url = normalized.image
-                    logger.info(f"Found Shopify product: {request.wallpaper_id}, image: {wallpaper_url[:50]}...")
-                else:
-                    logger.warning(f"Shopify product not found: {request.wallpaper_id}")
-            except Exception as e:
-                logger.error(f"Failed to fetch Shopify product {request.wallpaper_id}: {e}", exc_info=True)
-
-        # Fallback to old catalog format
+        # Fallback to cached catalog (populated from Shopify) if direct lookup didn't find it
         if not wallpaper_url:
-            logger.info(f"Trying fallback to static catalog for: {request.wallpaper_id}")
-            try:
-                catalog = _get_catalog()
-                logger.info(f"Catalog loaded: {len(catalog.get('designs', []))} designs")
-                wallpaper = next((w for w in catalog['designs'] if w['id'] == request.wallpaper_id), None)
-                if not wallpaper:
-                    # Debug: log first few IDs to see what's in the catalog
-                    first_few_ids = [d['id'] for d in catalog.get('designs', [])[:3]]
-                    logger.error(f"Wallpaper not found in catalog. First 3 IDs: {first_few_ids}")
-                    raise HTTPException(status_code=404, detail=f"Wallpaper '{request.wallpaper_id}' not found")
-                wallpaper_url = wallpaper['full_url']
-                logger.info(f"Found wallpaper in static catalog: {request.wallpaper_id}, url: {wallpaper_url[:50]}...")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error(f"Error loading catalog: {e}", exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Failed to load catalog: {str(e)}")
+            logger.info(f"Trying fallback to cached catalog for: {request.wallpaper_id}")
+            # Use _get_catalog() which returns cached Shopify data if available, or static catalog.json
+            catalog = _get_catalog()
+
+            wallpaper = next((w for w in catalog.get("designs", []) if w["id"] == request.wallpaper_id), None)
+            if not wallpaper:
+                logger.error(f"Wallpaper not found in any source: {request.wallpaper_id}")
+                raise HTTPException(status_code=404, detail=f"Wallpaper '{request.wallpaper_id}' not found")
+
+            wallpaper_url = wallpaper["full_url"]
+            logger.info(f"Found wallpaper in cached catalog: {request.wallpaper_id}")
 
         # Get cached room image bytes (cached during upload)
         from ai_wall_detector import _get_cached_room_image

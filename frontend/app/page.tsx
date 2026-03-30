@@ -90,11 +90,14 @@ export default function Home() {
         })
       })
 
-      if (!response.ok) {
-        throw new Error('Preview generation failed')
-      }
+      // Parse response body first to get actual error details
+      const data = await response.json().catch(() => null)
 
-      const data = await response.json()
+      if (!response.ok) {
+        // Use backend error detail if available
+        const errorMsg = data?.detail || data?.error || 'Preview generation failed'
+        throw new Error(errorMsg)
+      }
 
       // Check if this is a fallback response (AI generation failed)
       if (data.fallback) {
@@ -109,17 +112,15 @@ export default function Home() {
       if (data.success && data.preview_url) {
         setPreviewUrl(data.preview_url)
       } else {
-        throw new Error('Preview generation failed. Please try again.')
+        throw new Error(data.error || 'Preview generation failed. Please try again.')
       }
 
     } catch (err: any) {
       // Provide user-friendly error messages
-      let userMessage = 'Failed to generate preview. Please try again.'
+      let userMessage = err.message || 'Failed to generate preview. Please try again.'
 
       if (err.message?.includes('Failed to fetch')) {
         userMessage = 'Cannot connect to server. Please check your internet connection.'
-      } else if (err.message?.includes('Preview generation failed')) {
-        userMessage = err.message
       }
 
       setGenerateError(userMessage)
