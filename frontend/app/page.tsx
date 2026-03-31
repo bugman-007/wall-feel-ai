@@ -7,6 +7,7 @@ import WallpaperGrid from './components/WallpaperGrid'
 import PreviewDisplay from './components/PreviewDisplay'
 import QualitySelector from './components/QualitySelector'
 import StyleFeelFilter from './components/StyleFeelFilter'
+import CreateCustomDesign from './components/CreateCustomDesign'
 
 interface WallpaperDesign {
   id: string
@@ -48,6 +49,9 @@ export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [selectedStyles, setSelectedStyles] = useState<string[]>([])
   const [selectedFeels, setSelectedFeels] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<'browse' | 'create'>('browse')
+  const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
+  const [generatedWallpaperUrl, setGeneratedWallpaperUrl] = useState<string | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -87,6 +91,107 @@ export default function Home() {
 
     // Scroll to wallpaper grid
     document.getElementById('wallpaper-grid')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const handleGenerateWallpaper = async (prompt: string, styleInspirations: string[]): Promise<{ success: boolean; wallpaperUrl?: string; error?: string }> => {
+    if (!selectedImage?.uploadedUrl) {
+      return { success: false, error: 'Please upload a room photo first' }
+    }
+
+    setIsGeneratingCustom(true)
+    setGenerateError(null)
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/ai-generate-wallpaper`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: prompt,
+          style_inspirations: styleInspirations,
+        })
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        const errorMsg = data?.detail || data?.error || data?.user_message || 'Wallpaper generation failed'
+        return { success: false, error: errorMsg }
+      }
+
+      if (data.success && (data.wallpaper_url || data.public_url)) {
+        setGeneratedWallpaperUrl(data.wallpaper_url || data.public_url)
+        return { success: true, wallpaperUrl: data.wallpaper_url || data.public_url }
+      } else {
+        return { success: false, error: data?.user_message || data?.error || 'Wallpaper generation failed' }
+      }
+
+    } catch (err: any) {
+      let userMessage = err.message || 'Failed to generate wallpaper. Please try again.'
+
+      if (err.message?.includes('Failed to fetch')) {
+        userMessage = 'Cannot connect to server. Please check your internet connection.'
+      }
+
+      console.error('Wallpaper generation error:', err)
+      return { success: false, error: userMessage }
+    } finally {
+      setIsGeneratingCustom(false)
+    }
+  }
+
+  const handleApplyWallpaper = async (wallpaperUrl: string): Promise<{ success: boolean; previewUrl?: string; error?: string }> => {
+    if (!selectedImage?.uploadedUrl) {
+      return { success: false, error: 'Room photo not available' }
+    }
+
+    setIsGeneratingCustom(true)
+    setGenerateError(null)
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/ai-apply-wallpaper`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_url: selectedImage.uploadedUrl,
+          wallpaper_url: wallpaperUrl,
+          quality: selectedQuality,
+        })
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        const errorMsg = data?.detail || data?.error || data?.user_message || 'Failed to apply wallpaper'
+        return { success: false, error: errorMsg }
+      }
+
+      if (data.success && data.preview_url) {
+        setPreviewUrl(data.preview_url)
+        // Clear generated wallpaper after successful application
+        setGeneratedWallpaperUrl(null)
+        return { success: true, previewUrl: data.preview_url }
+      } else {
+        return { success: false, error: data?.user_message || data?.error || 'Failed to apply wallpaper' }
+      }
+
+    } catch (err: any) {
+      let userMessage = err.message || 'Failed to apply wallpaper. Please try again.'
+
+      if (err.message?.includes('Failed to fetch')) {
+        userMessage = 'Cannot connect to server. Please check your internet connection.'
+      }
+
+      console.error('Wallpaper application error:', err)
+      return { success: false, error: userMessage }
+    } finally {
+      setIsGeneratingCustom(false)
+    }
   }
 
   // Apply theme to document
@@ -246,135 +351,136 @@ export default function Home() {
       {/* AI Wallpaper Preview Generator - Integrated Section */}
       <section className="content-shell" id="visualizer" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '64px' }}>
         <h2 className="section-title">Visualize Your Space</h2>
-        <p className="text-center" style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 48px' }}>
+        <p className="text-center" style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 32px' }}>
           Upload your room photo and explore how our premium wallpapers transform your space instantly.
         </p>
 
-        {/* Modern Progress Bar */}
-        {(selectedImage || selectedWallpaper || previewUrl) && (
-          <div className="progress-bar-container" style={{ marginBottom: '40px' }}>
-            <div className="progress-steps">
-              <div className={`progress-step ${selectedImage ? 'completed' : ''} ${!selectedImage && selectedWallpaper ? 'active' : ''}`}>
-                <div className="progress-indicator">
-                  {selectedImage ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <span>1</span>
-                  )}
-                </div>
-                <span className="progress-label">Upload</span>
-              </div>
-              <div className="progress-line" style={{ background: selectedWallpaper ? 'var(--gold)' : 'var(--border-light)' }} />
-              <div className={`progress-step ${selectedWallpaper ? 'completed' : ''} ${!selectedWallpaper && !previewUrl ? 'active' : ''}`}>
-                <div className="progress-indicator">
-                  {selectedWallpaper ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <span>2</span>
-                  )}
-                </div>
-                <span className="progress-label">Choose</span>
-              </div>
-              <div className="progress-line" style={{ background: previewUrl ? 'var(--gold)' : 'var(--border-light)' }} />
-              <div className={`progress-step ${previewUrl ? 'completed' : ''}`}>
-                <div className="progress-indicator">
-                  {previewUrl ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <span>3</span>
-                  )}
-                </div>
-                <span className="progress-label">Preview</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 1: Upload */}
+        {/* Step 1: Upload - Always shown first */}
         <div className="step-section">
           <h3 className="step-title">1. Upload Your Room Photo</h3>
           <ImageUpload onImageSelect={handleImageSelect} />
         </div>
 
-        {/* Step 2: Choose Style & Feel */}
+        {/* Tabs - shown after image upload */}
         {selectedImage && (
-          <div className="step-section">
-            <h3 className="step-title">2. Choose Style & Feel</h3>
-            <StyleFeelFilter
-              selectedStyles={selectedStyles}
-              selectedFeels={selectedFeels}
-              onStyleSelect={handleStyleSelect}
-              onFeelSelect={handleFeelSelect}
-              onSurpriseMe={handleSurpriseMe}
-            />
-          </div>
-        )}
-
-        {/* Step 3: Choose Wallpaper */}
-        {selectedImage && (
-          <div className="step-section" id="wallpaper-grid">
-            <h3 className="step-title">
-              {selectedStyles.length > 0 || selectedFeels.length > 0
-                ? `3. Choose from ${selectedStyles.length + selectedFeels.length} Filter${(selectedStyles.length + selectedFeels.length) > 1 ? 's' : ''}`
-                : '3. Choose Your Wallpaper Design'}
-            </h3>
-            <WallpaperGrid
-              onWallpaperSelect={handleWallpaperSelect}
-              selectedId={selectedWallpaper?.id}
-              selectedStyles={selectedStyles}
-              selectedFeels={selectedFeels}
-            />
-          </div>
-        )}
-
-        {/* Step 4: Choose Quality */}
-        {selectedImage && selectedWallpaper && !previewUrl && (
-          <div className="step-section">
-            <h3 className="step-title">4. Choose Output Quality</h3>
-            <QualitySelector
-              selectedId={selectedQuality}
-              onSelect={setSelectedQuality}
-            />
-          </div>
-        )}
-
-        {/* Step 5: Generate Preview */}
-        {selectedImage && selectedWallpaper && !previewUrl && (
-          <div className="step-section">
-            <h3 className="step-title">5. Generate Preview</h3>
-            <div className="card" style={{ maxWidth: '600px', margin: '0 auto', padding: '32px', textAlign: 'center' }}>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-                AI will automatically detect walls and apply the wallpaper
-              </p>
-              <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
-                Selected quality: <strong style={{ color: 'var(--text-primary)' }}>{selectedQuality.toUpperCase()}</strong> (Estimated time: {selectedQuality === '1k' ? '30-40' : selectedQuality === '2k' ? '35-45' : selectedQuality === '4k' ? '~1 minute' : '> 1 minute'} seconds)
-              </p>
+          <>
+            {/* Tab Navigation */}
+            <div className="flex border-b mt-8" style={{ borderColor: 'var(--border-light)' }}>
               <button
-                onClick={handleGeneratePreview}
-                disabled={isGenerating}
-                className={`gold-btn ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                style={{ minWidth: '200px' }}
+                onClick={() => setActiveTab('browse')}
+                className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'browse' ? 'border-gold' : 'border-transparent'}`}
+                style={{
+                  background: activeTab === 'browse' ? 'var(--bg-secondary)' : 'transparent',
+                  color: activeTab === 'browse' ? 'var(--gold)' : 'var(--text-secondary)',
+                }}
               >
-                {isGenerating ? (
-                  <span className="flex items-center justify-center space-x-2">
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>Generating Preview...</span>
-                  </span>
-                ) : (
-                  'Generate Preview with AI'
-                )}
+                Browse Catalog
+              </button>
+              <button
+                onClick={() => setActiveTab('create')}
+                className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'create' ? 'border-gold' : 'border-transparent'}`}
+                style={{
+                  background: activeTab === 'create' ? 'var(--bg-secondary)' : 'transparent',
+                  color: activeTab === 'create' ? 'var(--gold)' : 'var(--text-secondary)',
+                }}
+              >
+                Create Your Own
               </button>
             </div>
-          </div>
+
+            {/* Tab Content */}
+            <div className="mt-6">
+              {/* Browse Catalog Tab */}
+              {activeTab === 'browse' && (
+                <div className="space-y-6">
+                  {/* Style & Feel Filter */}
+                  <div className="step-section">
+                    <h3 className="step-title">2. Choose Style & Feel</h3>
+                    <StyleFeelFilter
+                      selectedStyles={selectedStyles}
+                      selectedFeels={selectedFeels}
+                      onStyleSelect={handleStyleSelect}
+                      onFeelSelect={handleFeelSelect}
+                      onSurpriseMe={handleSurpriseMe}
+                    />
+                  </div>
+
+                  {/* Wallpaper Grid */}
+                  <div className="step-section" id="wallpaper-grid">
+                    <h3 className="step-title">
+                      {selectedStyles.length > 0 || selectedFeels.length > 0
+                        ? `3. Choose from ${selectedStyles.length + selectedFeels.length} Filter${(selectedStyles.length + selectedFeels.length) > 1 ? 's' : ''}`
+                        : '3. Choose Your Wallpaper Design'}
+                    </h3>
+                    <WallpaperGrid
+                      onWallpaperSelect={handleWallpaperSelect}
+                      selectedId={selectedWallpaper?.id}
+                      selectedStyles={selectedStyles}
+                      selectedFeels={selectedFeels}
+                    />
+                  </div>
+
+                  {/* Quality Selector */}
+                  {selectedWallpaper && !previewUrl && (
+                    <div className="step-section">
+                      <h3 className="step-title">4. Choose Output Quality</h3>
+                      <QualitySelector
+                        selectedId={selectedQuality}
+                        onSelect={setSelectedQuality}
+                      />
+                    </div>
+                  )}
+
+                  {/* Generate Preview Button */}
+                  {selectedWallpaper && !previewUrl && (
+                    <div className="step-section">
+                      <h3 className="step-title">5. Generate Preview</h3>
+                      <div className="card" style={{ maxWidth: '600px', margin: '0 auto', padding: '32px', textAlign: 'center' }}>
+                        <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+                          AI will automatically detect walls and apply the wallpaper
+                        </p>
+                        <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
+                          Selected quality: <strong style={{ color: 'var(--text-primary)' }}>{selectedQuality.toUpperCase()}</strong> (Estimated time: {selectedQuality === '1k' ? '30-40' : selectedQuality === '2k' ? '35-45' : selectedQuality === '4k' ? '~1 minute' : '> 1 minute'} seconds)
+                        </p>
+                        <button
+                          onClick={handleGeneratePreview}
+                          disabled={isGenerating}
+                          className={`gold-btn ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          style={{ minWidth: '200px' }}
+                        >
+                          {isGenerating ? (
+                            <span className="flex items-center justify-center space-x-2">
+                              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span>Generating Preview...</span>
+                            </span>
+                          ) : (
+                            'Generate Preview with AI'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Create Your Own Tab */}
+              {activeTab === 'create' && (
+                <div className="step-section">
+                  <h3 className="step-title">2. Create Your Custom Wallpaper</h3>
+                  <CreateCustomDesign
+                    onGenerateWallpaper={handleGenerateWallpaper}
+                    onApplyWallpaper={handleApplyWallpaper}
+                    isGenerating={isGeneratingCustom}
+                    roomImageUrl={selectedImage?.uploadedUrl}
+                    quality={selectedQuality}
+                  />
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         {/* Error Message */}
@@ -392,7 +498,7 @@ export default function Home() {
                   {generateError}
                 </p>
                 <button
-                  onClick={handleGeneratePreview}
+                  onClick={() => activeTab === 'browse' ? handleGeneratePreview() : null}
                   className="text-sm font-medium"
                   style={{ color: 'var(--gold)', marginTop: '12px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
                 >

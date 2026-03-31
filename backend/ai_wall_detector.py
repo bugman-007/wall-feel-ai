@@ -32,6 +32,14 @@ CRITICAL REQUIREMENTS:
 The wallpaper image shows the exact pattern, color, and texture to apply.
 """
 
+# Style inspiration prompts for custom design generation
+STYLE_INSPIRATION_PROMPTS = {
+    "Tropical Paradise": "vibrant tropical paradise with lush palm leaves, monstera, and exotic flowers in emerald green, coral pink, and golden yellow tones",
+    "Warm Minimal Texture": "minimalist textured wall in warm beige and cream tones with subtle linen-like pattern, soft natural lighting",
+    "Luxury Marble Pattern": "elegant white marble with subtle gold veining, Carrara marble texture, luxurious and sophisticated",
+    "Organic Botanical": "deep forest green botanical wallpaper with large tropical leaves, natural organic patterns, biophilic design",
+}
+
 # Supported quality levels
 QualityLevel = Literal["1k", "2k", "4k", "8k"]
 
@@ -443,6 +451,133 @@ def generate_wallpaper_preview_gemini(
         return error_info
 
 
+def generate_wallpaper_texture(
+    prompt: str,
+    style_inspirations: list[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Generate wallpaper texture only from text prompt using Gemini 2.5 Flash Image
+
+    This is for the two-step flow:
+    1. Generate texture -> user reviews/confirms
+    2. Apply texture to room
+
+    Args:
+        prompt: User's text prompt describing desired wallpaper
+        style_inspirations: Optional list of style inspiration names
+
+    Returns:
+        Dict with wallpaper_url and timing
+    """
+    try:
+        from google import genai
+        from google.genai import types
+        from r2_client import r2_client
+        import uuid
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.error("Gemini API key not configured")
+            return None
+
+        client = genai.Client(api_key=api_key)
+        start_time = time.time()
+
+        # Build enhanced prompt from style inspirations
+        style_prompts = []
+        if style_inspirations:
+            for style_name in style_inspirations:
+                if style_name in STYLE_INSPIRATION_PROMPTS:
+                    style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
+
+        # Combine user prompt with style inspirations
+        if style_prompts:
+            enhanced_prompt = f"{prompt}. Style elements: {'; '.join(style_prompts)}"
+        else:
+            enhanced_prompt = prompt
+
+        # Ensure prompt is descriptive enough
+        if len(enhanced_prompt) < 20:
+            enhanced_prompt = f"Generate a beautiful wallpaper pattern with: {enhanced_prompt}"
+
+        logger.info(f"Texture generation request: prompt='{enhanced_prompt[:100]}...'")
+
+        # Generate wallpaper texture using Gemini 2.5 Flash
+        logger.info("Generating wallpaper texture with Gemini 2.5 Flash...")
+        generation_start = time.time()
+
+        texture_response = client.models.generate_content(
+            model='gemini-2.5-flash-image',
+            contents=[
+                f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
+                "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
+            ],
+            config=types.GenerateContentConfig(
+                response_modalities=['IMAGE'],
+            )
+        )
+
+        generation_elapsed = time.time() - generation_start
+        logger.info(f"Texture generation completed in {generation_elapsed:.2f}s")
+
+        # Extract generated wallpaper texture
+        wallpaper_bytes = _extract_generated_image(texture_response)
+        if not wallpaper_bytes:
+            logger.warning("Gemini did not return a valid wallpaper texture")
+            return None
+
+        # Detect MIME type
+        wallpaper_mime = _detect_mime_type(wallpaper_bytes)
+
+        # Upload to R2
+        upload_start = time.time()
+        wallpaper_filename = f"wallpapers/custom-{uuid.uuid4()}.webp"
+        _, wallpaper_presigned_url = r2_client.upload_file_with_presigned_url(
+            file_data=wallpaper_bytes,
+            filename=wallpaper_filename,
+            content_type='image/webp',
+            expiration=7200
+        )
+        upload_elapsed = time.time() - upload_start
+
+        total_elapsed = time.time() - start_time
+
+        logger.info(f"Wallpaper texture generated successfully in {total_elapsed:.2f}s")
+
+        return {
+            "success": True,
+            "wallpaper_url": wallpaper_presigned_url,
+            "public_url": f"https://pub-{r2_client.account_id}.r2.dev/{wallpaper_filename}",
+            "provider": "google",
+            "model": "gemini-2.5-flash-image",
+            "timing": {
+                "generation_time": round(generation_elapsed, 2),
+                "upload_time": round(upload_elapsed, 2),
+                "total_time": round(total_elapsed, 2)
+            }
+        }
+
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Texture generation error: {error_message}", exc_info=True)
+
+        error_info = {
+            "error": error_message,
+            "error_type": type(e).__name__
+        }
+
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            error_info["user_message"] = "AI service is currently busy due to high demand. Please try again in a few moments."
+        elif "429" in error_message:
+            error_info["user_message"] = "Too many requests. Please wait a moment and try again."
+        elif "401" in error_message or "API key" in error_message:
+            error_info["user_message"] = "Authentication error. Please check your API configuration."
+        elif "timeout" in error_message.lower() or "timed out" in error_message.lower():
+            error_info["user_message"] = "Request timed out. Please check your connection and try again."
+
+        return error_info
+
+
 def generate_wallpaper_preview_ai(
     image_url: str,
     wallpaper_url: str,
@@ -476,3 +611,221 @@ def generate_wallpaper_preview_ai(
         image_url, wallpaper_url, quality=quality,
         room_image_bytes=room_image_bytes, room_mime_type=room_mime_type
     )
+
+
+def generate_custom_wallpaper_ai(
+    image_url: str,
+    prompt: str,
+    style_inspirations: list[str] = None,
+    quality: QualityLevel = "1k",
+    room_image_bytes: Optional[bytes] = None,
+    room_mime_type: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Generate custom wallpaper from text prompt using Gemini 2.5 Flash Image
+
+    Flow:
+    1. Build enhanced prompt from user prompt + style inspirations
+    2. Generate wallpaper texture using Gemini 2.5 Flash (fast generation)
+    3. Apply generated wallpaper to room using Gemini 3.1 Flash Image
+    4. Return final preview
+
+    Args:
+        image_url: Room image URL (used for caching key)
+        prompt: User's text prompt describing desired wallpaper
+        style_inspirations: Optional list of style inspiration names
+        quality: Output quality preset (1k, 2k, 4k, 8k) - default 1k for speed
+        room_image_bytes: Optional pre-loaded room image bytes
+        room_mime_type: Optional MIME type for room_image_bytes
+
+    Returns:
+        Dict with preview_url, timing breakdown, and metadata
+    """
+    try:
+        from google import genai
+        from google.genai import types
+        from r2_client import r2_client
+        import uuid
+        import concurrent.futures
+        import io
+        from PIL import Image as PILImage
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.error("Gemini API key not configured")
+            return None
+
+        client = genai.Client(api_key=api_key)
+        start_time = time.time()
+
+        # Build enhanced prompt from style inspirations
+        style_prompts = []
+        if style_inspirations:
+            for style_name in style_inspirations:
+                if style_name in STYLE_INSPIRATION_PROMPTS:
+                    style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
+
+        # Combine user prompt with style inspirations
+        if style_prompts:
+            enhanced_prompt = f"{prompt}. Style elements: {'; '.join(style_prompts)}"
+        else:
+            enhanced_prompt = prompt
+
+        # Ensure prompt is descriptive enough for generation
+        if len(enhanced_prompt) < 20:
+            enhanced_prompt = f"Generate a beautiful wallpaper pattern with: {enhanced_prompt}"
+
+        logger.info(f"Custom design request: prompt='{enhanced_prompt[:100]}...', style_count={len(style_inspirations or [])}")
+
+        # Track timing
+        download_start = time.time()
+        download_elapsed = 0.0
+
+        # Get room image bytes
+        if room_image_bytes is not None:
+            logger.info("Using provided room image bytes (no download needed)")
+            download_elapsed = 0.0
+        else:
+            room_image_bytes = _get_cached_room_image(image_url)
+            if room_image_bytes is None:
+                logger.info("Downloading room image...")
+                room_image_bytes = _download_image(image_url)
+                _cache_room_image(image_url, room_image_bytes)
+            download_elapsed = time.time() - download_start
+
+        # Detect MIME type
+        detected_room_mime = _detect_mime_type(room_image_bytes)
+        actual_room_mime = room_mime_type or detected_room_mime
+
+        # Get original dimensions for aspect ratio
+        room_img = PILImage.open(io.BytesIO(room_image_bytes))
+        original_width, original_height = room_img.size
+
+        # ========== STEP 1: Generate wallpaper texture using Gemini 2.5 Flash ==========
+        logger.info("Step 1: Generating wallpaper texture with Gemini 2.5 Flash (fast)...")
+        texture_generation_start = time.time()
+
+        # Use Gemini 2.5 Flash for fast texture generation
+        texture_response = client.models.generate_content(
+            model='gemini-2.5-flash-image',
+            contents=[
+                f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
+                "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
+            ],
+            config=types.GenerateContentConfig(
+                response_modalities=['IMAGE'],
+            )
+        )
+
+        texture_generation_elapsed = time.time() - texture_generation_start
+        logger.info(f"Texture generation completed in {texture_generation_elapsed:.2f}s")
+
+        # Extract generated wallpaper texture
+        wallpaper_bytes = _extract_generated_image(texture_response)
+        if not wallpaper_bytes:
+            logger.warning("Gemini did not return a valid wallpaper texture")
+            return None
+
+        # Create wallpaper image object
+        wallpaper_mime = _detect_mime_type(wallpaper_bytes)
+        wallpaper_image = types.Part.from_bytes(data=wallpaper_bytes, mime_type=wallpaper_mime)
+
+        # ========== STEP 2: Apply wallpaper to room using Gemini 3.1 Flash Image ==========
+        logger.info("Step 2: Applying wallpaper to room with Gemini 3.1 Flash Image...")
+        apply_generation_start = time.time()
+
+        # Create room image object
+        room_image = types.Part.from_bytes(data=room_image_bytes, mime_type=actual_room_mime)
+
+        # Apply wallpaper to room
+        apply_response = client.models.generate_content(
+            model='gemini-3.1-flash-image-preview',
+            contents=[
+                DEFAULT_WALLPAPER_PROMPT,
+                room_image,
+                wallpaper_image
+            ],
+            config=types.GenerateContentConfig(
+                response_modalities=['IMAGE']
+            )
+        )
+
+        apply_generation_elapsed = time.time() - apply_generation_start
+        logger.info(f"Wallpaper application completed in {apply_generation_elapsed:.2f}s")
+
+        # Extract final preview image
+        image_bytes = _extract_generated_image(apply_response)
+        if not image_bytes:
+            logger.warning("Gemini did not return a valid preview image")
+            return None
+
+        # Calculate target dimensions
+        target_dimension = QUALITY_DIMENSIONS.get(quality, 1024)
+        aspect_ratio = original_width / original_height
+        if aspect_ratio > 1:
+            target_width = target_dimension
+            target_height = int(target_dimension / aspect_ratio)
+        else:
+            target_height = target_dimension
+            target_width = int(target_dimension * aspect_ratio)
+
+        # Post-process: resize and convert to WebP
+        logger.info(f"Post-processing: resizing to {target_width}x{target_height} (WebP)")
+        postprocess_start = time.time()
+        image_bytes = _resize_and_correct_image(
+            image_bytes, target_width, target_height,
+            output_format='webp', quality=85
+        )
+        postprocess_elapsed = time.time() - postprocess_start
+
+        # Upload to R2
+        upload_start = time.time()
+        preview_filename = f"previews/custom-{uuid.uuid4()}.webp"
+        _, preview_presigned_url = r2_client.upload_file_with_presigned_url(
+            file_data=image_bytes,
+            filename=preview_filename,
+            content_type='image/webp',
+            expiration=7200
+        )
+        upload_elapsed = time.time() - upload_start
+
+        total_elapsed = time.time() - start_time
+
+        logger.info(f"Custom design generated successfully in {total_elapsed:.2f}s total")
+
+        return {
+            "success": True,
+            "preview_url": preview_presigned_url,
+            "provider": "google",
+            "model": "gemini-2.5-flash-image-preview + gemini-3.1-flash-image-preview",
+            "quality": quality,
+            "output_dimensions": f"{target_width}x{target_height}",
+            "timing": {
+                "download_time": round(download_elapsed, 2),
+                "texture_generation_time": round(texture_generation_elapsed, 2),
+                "apply_generation_time": round(apply_generation_elapsed, 2),
+                "postprocess_time": round(postprocess_elapsed, 2),
+                "upload_time": round(upload_elapsed, 2),
+                "total_time": round(total_elapsed, 2)
+            }
+        }
+
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Custom design generation error: {error_message}", exc_info=True)
+
+        error_info = {
+            "error": error_message,
+            "error_type": type(e).__name__
+        }
+
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            error_info["user_message"] = "AI service is currently busy due to high demand. Please try again in a few moments."
+        elif "429" in error_message:
+            error_info["user_message"] = "Too many requests. Please wait a moment and try again."
+        elif "401" in error_message or "API key" in error_message:
+            error_info["user_message"] = "Authentication error. Please check your API configuration."
+        elif "timeout" in error_message.lower() or "timed out" in error_message.lower():
+            error_info["user_message"] = "Request timed out. Please check your connection and try again."
+
+        return error_info

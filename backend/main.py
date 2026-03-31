@@ -12,7 +12,7 @@ import httpx
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
-from ai_wall_detector import generate_wallpaper_preview_ai, QualityLevel
+from ai_wall_detector import generate_wallpaper_preview_ai, generate_custom_wallpaper_ai, generate_wallpaper_texture, QualityLevel
 from typing import List, Dict, Any, Optional, Literal
 import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
@@ -556,6 +556,38 @@ class DirectPreviewRequest(BaseModel):
         }
     }
 
+
+class CustomDesignRequest(BaseModel):
+    """Request for custom AI wallpaper texture generation from text prompt"""
+    prompt: str
+    style_inspirations: list[str] = []
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "prompt": "Luxurious warm and elegant wallpaper with subtle texture",
+                "style_inspirations": ["Tropical Paradise", "Warm Minimal Texture"]
+            }
+        }
+    }
+
+
+class ApplyCustomWallpaperRequest(BaseModel):
+    """Request to apply a generated/custom wallpaper to room"""
+    image_url: str
+    wallpaper_url: str
+    quality: Literal["1k", "2k", "4k", "8k"] = "1k"
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "image_url": "https://pub-xxx.r2.dev/uploads/room.jpg",
+                "wallpaper_url": "https://pub-xxx.r2.dev/previews/custom-wallpaper.jpg",
+                "quality": "1k"
+            }
+        }
+    }
+
 class CreateOrderRequest(BaseModel):
     preview_image_url: str
     original_image_url: str
@@ -755,6 +787,209 @@ async def ai_generate_preview(request: DirectPreviewRequest):
                 "upload_time": 0,
                 "total_time": 0
             }
+        }
+
+
+@app.post("/api/ai-generate-wallpaper")
+async def ai_generate_wallpaper_texture(request: CustomDesignRequest):
+    """
+    Step 1: Generate custom wallpaper texture from text prompt
+
+    Flow:
+    1. User provides text prompt describing desired wallpaper
+    2. Optional style inspirations can be selected to enhance the prompt
+    3. Gemini 2.5 Flash generates wallpaper texture (fast generation)
+    4. Returns wallpaper texture URL for user review
+
+    User then reviews the wallpaper and confirms before applying to room.
+
+    Args:
+        request: {
+            prompt: string (text description of desired wallpaper),
+            style_inspirations: list[string] (optional style names to enhance prompt)
+        }
+
+    Returns:
+        On success:
+        {
+            "success": true,
+            "wallpaper_url": "https://...",
+            "public_url": "https://...",
+            "provider": "google",
+            "model": "gemini-2.5-flash-image",
+            "timing": {
+                "generation_time": 5.0,
+                "upload_time": 0.8,
+                "total_time": 5.8
+            }
+        }
+
+        On failure:
+        {
+            "success": false,
+            "error": "Error details",
+            "user_message": "User-friendly error message"
+        }
+    """
+    try:
+        logger.info(f"Wallpaper texture generation requested: styles={len(request.style_inspirations)}")
+
+        # Validate prompt
+        if not request.prompt or len(request.prompt.strip()) == 0:
+            if len(request.style_inspirations) == 0:
+                raise HTTPException(status_code=400, detail="Either prompt or style inspirations must be provided")
+
+        # Run blocking generation in thread pool
+        logger.info("Starting wallpaper texture generation...")
+        result = await asyncio.to_thread(
+            generate_wallpaper_texture,
+            prompt=request.prompt,
+            style_inspirations=request.style_inspirations
+        )
+
+        if result and result.get("success"):
+            logger.info(f"Wallpaper texture generated: total_time={result.get('timing', {}).get('total_time', 'N/A')}s")
+            return result
+        else:
+            error_msg = result.get("user_message") if result else "Wallpaper generation failed"
+            raw_error = result.get("error", "AI service temporarily unavailable") if result else "AI generation failed"
+
+            if not error_msg or error_msg == raw_error:
+                if "503" in raw_error or "UNAVAILABLE" in raw_error:
+                    error_msg = "AI service is currently busy. Please try again in a few moments."
+                elif "429" in raw_error:
+                    error_msg = "Too many requests. Please wait and try again."
+
+            return {
+                "success": False,
+                "error": raw_error,
+                "user_message": error_msg,
+                "wallpaper_url": None
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Wallpaper generation error: {error_message}", exc_info=True)
+
+        user_message = error_message
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            user_message = "AI service is currently busy. Please try again in a few moments."
+        elif "429" in error_message:
+            user_message = "Too many requests. Please wait and try again."
+        elif "timeout" in error_message.lower():
+            user_message = "Request timed out. Please check your connection and try again."
+
+        return {
+            "success": False,
+            "error": error_message,
+            "user_message": user_message,
+            "wallpaper_url": None
+        }
+
+
+@app.post("/api/ai-apply-wallpaper")
+async def ai_apply_custom_wallpaper(request: ApplyCustomWallpaperRequest):
+    """
+    Step 2: Apply custom wallpaper texture to room photo
+
+    Flow:
+    1. User has already generated/reviewed wallpaper texture
+    2. User confirms and applies wallpaper to their room
+    3. Gemini 3.1 Flash applies wallpaper to room walls
+    4. Returns final preview image
+
+    Args:
+        request: {
+            image_url: string (room photo presigned URL),
+            wallpaper_url: string (generated wallpaper texture URL),
+            quality: "1k"|"2k"|"4k"|"8k" (default: "1k")
+        }
+
+    Returns:
+        On success:
+        {
+            "success": true,
+            "preview_url": "https://...",
+            "provider": "google",
+            "model": "gemini-3.1-flash-image-preview",
+            "quality": "1k",
+            "timing": {
+                "download_time": 0.5,
+                "generation_time": 8.0,
+                "postprocess_time": 1.0,
+                "upload_time": 0.8,
+                "total_time": 10.3
+            }
+        }
+
+        On failure:
+        {
+            "success": false,
+            "error": "Error details",
+            "user_message": "User-friendly error message"
+        }
+    """
+    try:
+        logger.info(f"Applying custom wallpaper to room: quality={request.quality}")
+
+        # Get cached room image bytes
+        from ai_wall_detector import _get_cached_room_image
+        room_image_bytes = _get_cached_room_image(request.image_url)
+
+        if room_image_bytes is not None:
+            logger.info("Room image found in cache")
+
+        # Run blocking generation in thread pool
+        logger.info("Starting wallpaper application...")
+        result = await asyncio.to_thread(
+            generate_wallpaper_preview_ai,
+            image_url=request.image_url,
+            wallpaper_url=request.wallpaper_url,
+            quality=request.quality,
+            room_image_bytes=room_image_bytes
+        )
+
+        if result and result.get("success"):
+            logger.info(f"Wallpaper applied: total_time={result.get('timing', {}).get('total_time', 'N/A')}s")
+            return result
+        else:
+            error_msg = result.get("user_message") if result else "Failed to apply wallpaper"
+            raw_error = result.get("error", "AI service unavailable") if result else "AI generation failed"
+
+            if not error_msg or error_msg == raw_error:
+                if "503" in raw_error or "UNAVAILABLE" in raw_error:
+                    error_msg = "AI service is currently busy. Please try again in a few moments."
+                elif "429" in raw_error:
+                    error_msg = "Too many requests. Please wait and try again."
+
+            return {
+                "success": False,
+                "error": raw_error,
+                "user_message": error_msg,
+                "preview_url": None
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Wallpaper application error: {error_message}", exc_info=True)
+
+        user_message = error_message
+        if "503" in error_message or "UNAVAILABLE" in error_message:
+            user_message = "AI service is currently busy. Please try again in a few moments."
+        elif "429" in error_message:
+            user_message = "Too many requests. Please wait and try again."
+        elif "timeout" in error_message.lower():
+            user_message = "Request timed out. Please check your connection and try again."
+
+        return {
+            "success": False,
+            "error": error_message,
+            "user_message": user_message,
+            "preview_url": None
         }
 
 

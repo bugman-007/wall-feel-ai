@@ -175,10 +175,10 @@ export default function PreviewDisplay({
 
         {/* Labels */}
         <div className="absolute top-4 left-4 px-3 py-1 rounded text-sm font-medium" style={{ background: 'rgba(0,0,0,0.7)', color: 'white' }}>
-          Before
+          After
         </div>
         <div className="absolute top-4 right-4 px-3 py-1 rounded text-sm font-medium" style={{ background: 'rgba(0,0,0,0.7)', color: 'white' }}>
-          After
+          Before
         </div>
       </div>
 
