@@ -12,7 +12,16 @@ import httpx
 from pathlib import Path
 from dotenv import load_dotenv
 from r2_client import r2_client
-from ai_wall_detector import generate_wallpaper_preview_ai, generate_custom_wallpaper_ai, generate_wallpaper_texture, QualityLevel
+from ai_wall_detector import (
+    generate_wallpaper_preview_ai,
+    generate_custom_wallpaper_ai,
+    generate_wallpaper_texture,
+    generate_wallpaper_preview_async,
+    generate_wallpaper_texture_async,
+    QualityLevel
+)
+from retry_wrapper import is_transient_error
+from job_queue import job_queue, get_job_queue, JobType, JobStatus
 from typing import List, Dict, Any, Optional, Literal
 import time
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
@@ -588,6 +597,30 @@ class ApplyCustomWallpaperRequest(BaseModel):
         }
     }
 
+
+class PreviewJobCreate(BaseModel):
+    """Request to create a preview generation job."""
+    type: Literal["room_preview", "wallpaper_texture"]
+    # For room_preview
+    image_url: Optional[str] = None
+    wallpaper_id: Optional[str] = None
+    wallpaper_url: Optional[str] = None
+    quality: Literal["1k", "2k", "4k", "8k"] = "1k"
+    # For wallpaper_texture
+    prompt: Optional[str] = None
+    style_inspirations: list[str] = []
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "type": "room_preview",
+                "image_url": "https://pub-xxx.r2.dev/uploads/room.jpg",
+                "wallpaper_id": "modern-001",
+                "quality": "1k"
+            }
+        }
+    }
+
 class CreateOrderRequest(BaseModel):
     preview_image_url: str
     original_image_url: str
@@ -1065,6 +1098,281 @@ async def create_shopify_order(request: CreateOrderRequest):
             status_code=500,
             detail=f"Order creation failed: {str(e)}"
         )
+
+
+# =============================================================================
+# Preview Job Queue Endpoints
+# =============================================================================
+# These endpoints provide a job-based flow for preview generation:
+# 1. POST /api/preview-jobs - Create a job, get job_id
+# 2. GET /api/preview-jobs/{job_id} - Poll for status and result
+#
+# Benefits:
+# - No long-running HTTP requests
+# - Built-in retry with exponential backoff
+# - Concurrency control to prevent Gemini overload
+# - Better UX with progressive status updates
+
+
+@app.post("/api/preview-jobs")
+async def create_preview_job(request: PreviewJobCreate):
+    """
+    Create a preview generation job.
+
+    This endpoint creates a job and returns immediately with a job_id.
+    The client should poll GET /api/preview-jobs/{job_id} to check status.
+
+    Job flow:
+    1. queued - Waiting for available slot
+    2. processing - Currently generating
+    3. completed - Success, result includes preview_url
+    4. failed - Error, includes safe user-facing message
+
+    Args:
+        request: Job details including type, image_url, wallpaper info
+
+    Returns:
+        {
+            "job_id": "...",
+            "status": "queued",
+            "type": "room_preview"
+        }
+    """
+    try:
+        # Get job queue
+        queue = await get_job_queue()
+
+        # Build input payload based on job type
+        if request.type == "room_preview":
+            if not request.image_url or (not request.wallpaper_id and not request.wallpaper_url):
+                raise HTTPException(status_code=400, detail="image_url and wallpaper_id or wallpaper_url required for room_preview")
+
+            input_payload = {
+                "image_url": request.image_url,
+                "wallpaper_id": request.wallpaper_id,
+                "wallpaper_url": request.wallpaper_url,
+                "quality": request.quality
+            }
+            job_type = JobType.ROOM_PREVIEW
+
+        else:  # wallpaper_texture
+            if not request.prompt and not request.style_inspirations:
+                raise HTTPException(status_code=400, detail="prompt or style_inspirations required for wallpaper_texture")
+
+            input_payload = {
+                "prompt": request.prompt,
+                "style_inspirations": request.style_inspirations
+            }
+            job_type = JobType.WALLPAPER_TEXTURE
+
+        # Create job
+        job = queue.create_job(job_type=job_type, input_payload=input_payload)
+
+        # Start background processing
+        asyncio.create_task(_process_job(job.id))
+
+        logger.info(f"Created preview job {job.id} type={job_type.value}")
+
+        return {
+            "job_id": job.id,
+            "status": "queued",
+            "type": job_type.value
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating preview job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create job: {str(e)}")
+
+
+@app.get("/api/preview-jobs/{job_id}")
+async def get_preview_job(job_id: str):
+    """
+    Get preview job status and result.
+
+    Poll this endpoint every 2-3 seconds after creating a job.
+
+    Returns:
+        {
+            "id": "...",
+            "type": "room_preview",
+            "status": "processing",  # queued | processing | completed | failed
+            "retry_count": 0,
+            "result": { ... }  # Only when status=completed
+            "error_message": "..."  # Only when status=failed
+        }
+    """
+    queue = await get_job_queue()
+    job = queue.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    response = job.to_dict()
+
+    # Add estimated wait time if queued
+    if job.status == JobStatus.QUEUED:
+        concurrency = queue.get_concurrency_limiter()
+        # Rough estimate based on job type
+        if job.type == JobType.ROOM_PREVIEW:
+            response["estimated_wait_seconds"] = 30  # ~30s for room preview
+        else:
+            response["estimated_wait_seconds"] = 10  # ~10s for texture
+
+    return response
+
+
+async def _process_job(job_id: str):
+    """
+    Background task to process a preview job.
+
+    Handles:
+    - Acquiring concurrency slot
+    - Running generation with retry
+    - Updating job status
+    - Safe error handling
+    """
+    queue = await get_job_queue()
+    job = queue.get_job(job_id)
+
+    if not job:
+        logger.error(f"Job {job_id} not found for processing")
+        return
+
+    try:
+        # Update status to processing
+        queue.update_job_status(job_id, JobStatus.PROCESSING)
+
+        # Acquire concurrency slot
+        concurrency = queue.get_concurrency_limiter()
+        async with concurrency.acquire(job.type):
+            logger.info(f"Job {job_id} acquired concurrency slot, starting generation")
+
+            if job.type == JobType.ROOM_PREVIEW:
+                result = await _process_room_preview_job(job)
+            else:  # WALLPAPER_TEXTURE
+                result = await _process_texture_job(job)
+
+            # Handle result
+            if result and result.get("success"):
+                queue.update_job_status(
+                    job_id,
+                    JobStatus.COMPLETED,
+                    result=result
+                )
+                logger.info(f"Job {job_id} completed successfully")
+            else:
+                # Generation failed
+                error_msg = result.get("user_message", "AI preview generation failed") if result else "AI preview generation failed"
+                raw_error = result.get("error", "Unknown error") if result else "Unknown error"
+
+                queue.update_job_status(
+                    job_id,
+                    JobStatus.FAILED,
+                    error_message=error_msg,
+                    raw_error=raw_error
+                )
+                logger.warning(f"Job {job_id} failed: {error_msg}")
+
+    except Exception as e:
+        logger.error(f"Job {job_id} processing error: {e}", exc_info=True)
+
+        # Safe error message for user
+        error_str = str(e)
+        if is_transient_error(e):
+            error_msg = "AI service is temporarily unavailable. Please try again in a moment."
+        else:
+            error_msg = "Preview generation failed. Please try again."
+
+        queue.update_job_status(
+            job_id,
+            JobStatus.FAILED,
+            error_message=error_msg,
+            raw_error=error_str
+        )
+
+
+async def _process_room_preview_job(job) -> Optional[Dict[str, Any]]:
+    """
+    Process a room preview generation job.
+
+    Handles wallpaper lookup and calls the async generation function.
+    """
+    input_data = job.input_payload
+    image_url = input_data.get("image_url")
+    wallpaper_id = input_data.get("wallpaper_id")
+    wallpaper_url = input_data.get("wallpaper_url")
+    quality = input_data.get("quality", "1k")
+
+    # Resolve wallpaper URL if only ID provided
+    if wallpaper_id and not wallpaper_url:
+        try:
+            client = get_shopify_client()
+            product = await asyncio.wait_for(
+                client.get_product_by_handle(wallpaper_id),
+                timeout=10.0
+            )
+            if product:
+                from catalog_normalizer import normalize_product
+                normalized = normalize_product(product)
+                wallpaper_url = normalized.image
+                logger.info(f"Resolved wallpaper_id {wallpaper_id} to URL")
+            else:
+                logger.warning(f"Wallpaper not found: {wallpaper_id}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Shopify lookup timeout for {wallpaper_id}")
+        except Exception as e:
+            logger.error(f"Shopify lookup error: {e}")
+
+        # Fallback to catalog
+        if not wallpaper_url:
+            catalog = _get_catalog()
+            wallpaper = next((w for w in catalog.get("designs", []) if w["id"] == wallpaper_id), None)
+            if wallpaper:
+                wallpaper_url = wallpaper["full_url"]
+                logger.info(f"Found wallpaper in catalog: {wallpaper_id}")
+
+    if not wallpaper_url:
+        return {
+            "success": False,
+            "error": "Wallpaper not found",
+            "user_message": "Selected wallpaper is not available. Please choose another design."
+        }
+
+    # Get cached room image
+    from ai_wall_detector import _get_cached_room_image
+    room_image_bytes = _get_cached_room_image(image_url)
+
+    # Call async generation with retry
+    result = await generate_wallpaper_preview_async(
+        image_url=image_url,
+        wallpaper_url=wallpaper_url,
+        quality=quality,
+        room_image_bytes=room_image_bytes,
+        max_retries=3
+    )
+
+    return result
+
+
+async def _process_texture_job(job) -> Optional[Dict[str, Any]]:
+    """
+    Process a wallpaper texture generation job.
+    """
+    input_data = job.input_payload
+    prompt = input_data.get("prompt", "")
+    style_inspirations = input_data.get("style_inspirations", [])
+
+    # Call async generation with retry
+    result = await generate_wallpaper_texture_async(
+        prompt=prompt,
+        style_inspirations=style_inspirations,
+        max_retries=3
+    )
+
+    return result
+
 
 if __name__ == "__main__":
     import uvicorn

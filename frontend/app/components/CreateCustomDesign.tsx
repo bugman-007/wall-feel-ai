@@ -7,23 +7,21 @@ interface CreateCustomDesignProps {
   onGenerateWallpaper: (prompt: string, styleInspirations: string[]) => Promise<{ success: boolean; wallpaperUrl?: string; error?: string }>
   onApplyWallpaper: (wallpaperUrl: string) => Promise<{ success: boolean; previewUrl?: string; error?: string }>
   isGenerating: boolean
-  roomImageUrl?: string
-  quality: '1k' | '2k' | '4k' | '8k'
+  jobStatus?: 'queued' | 'processing' | 'completed' | 'failed' | null
 }
 
 const STYLE_INSPIRATIONS = [
-  { name: 'Tropical Paradise', image: 'https://images.unsplash.com/photo-1596568359876-0c96f04e1a1e?auto=format&fit=crop&w=400&q=80' },
-  { name: 'Warm Minimal Texture', image: 'https://images.unsplash.com/photo-1595846519845-68e298c2edd8?auto=format&fit=crop&w=400&q=80' },
-  { name: 'Luxury Marble Pattern', image: 'https://images.unsplash.com/photo-1615876234839-c84c02967ba8?auto=format&fit=crop&w=400&q=80' },
-  { name: 'Organic Botanical', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=400&q=80' },
+  { name: 'Tropical Paradise' },
+  { name: 'Warm Minimal Texture' },
+  { name: 'Luxury Marble Pattern' },
+  { name: 'Organic Botanical' },
 ]
 
 export default function CreateCustomDesign({
   onGenerateWallpaper,
   onApplyWallpaper,
   isGenerating,
-  roomImageUrl,
-  quality
+  jobStatus
 }: CreateCustomDesignProps) {
   const [prompt, setPrompt] = useState('')
   const [selectedStyleInspirations, setSelectedStyleInspirations] = useState<string[]>([])
@@ -163,13 +161,27 @@ export default function CreateCustomDesign({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span>Generating Wallpaper...</span>
+                  <span>
+                    {jobStatus === 'queued' && 'Queued for generation...'}
+                    {jobStatus === 'processing' && 'Generating wallpaper...'}
+                    {!jobStatus && 'Generating Wallpaper...'}
+                  </span>
                 </span>
               ) : (
                 'Generate Wallpaper'
               )}
             </button>
           </div>
+
+          {/* Job Status Message */}
+          {isGenerating && jobStatus && (
+            <div className="text-center max-w-xs mx-auto">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {jobStatus === 'queued' && 'AI service is busy right now. Retrying automatically...'}
+                {jobStatus === 'processing' && 'Creating your custom wallpaper...'}
+              </p>
+            </div>
+          )}
         </>
       ) : (
         /* Step 2: Review and Apply */

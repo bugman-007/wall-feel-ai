@@ -52,6 +52,11 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'browse' | 'create'>('browse')
   const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
   const [generatedWallpaperUrl, setGeneratedWallpaperUrl] = useState<string | null>(null)
+  // Job state for job-based flow
+  const [wallpaperJobId, setWallpaperJobId] = useState<string | null>(null)
+  const [previewJobId, setPreviewJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
+  const [jobError, setJobError] = useState<string | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -93,6 +98,38 @@ export default function Home() {
     document.getElementById('wallpaper-grid')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Poll job status until completion or failure
+  const pollJobStatus = async (jobId: string, onComplete: (result: any) => void, onError: (error: string) => void) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const pollInterval = 2000  // 2 seconds
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/preview-jobs/${jobId}`)
+        if (!response.ok) {
+          throw new Error('Failed to poll job status')
+        }
+
+        const data = await response.json()
+        setJobStatus(data.status)
+
+        if (data.status === 'completed') {
+          onComplete(data)
+        } else if (data.status === 'failed') {
+          onError(data.error_message || 'Job failed')
+        } else {
+          // Still processing or queued, continue polling
+          setTimeout(poll, pollInterval)
+        }
+      } catch (err: any) {
+        console.error('Polling error:', err)
+        onError('Failed to check job status')
+      }
+    }
+
+    poll()
+  }
+
   const handleGenerateWallpaper = async (prompt: string, styleInspirations: string[]): Promise<{ success: boolean; wallpaperUrl?: string; error?: string }> => {
     if (!selectedImage?.uploadedUrl) {
       return { success: false, error: 'Please upload a room photo first' }
@@ -100,46 +137,63 @@ export default function Home() {
 
     setIsGeneratingCustom(true)
     setGenerateError(null)
+    setJobStatus('queued')
+    setJobError(null)
 
-    try {
+    return new Promise((resolve) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/ai-generate-wallpaper`, {
+
+      // Create job
+      fetch(`${apiUrl}/api/preview-jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: 'wallpaper_texture',
           prompt: prompt,
           style_inspirations: styleInspirations,
         })
       })
+        .then(res => res.json())
+        .then(data => {
+          if (data.job_id) {
+            setWallpaperJobId(data.job_id)
+            console.log(`Wallpaper job created: ${data.job_id}`)
 
-      const data = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const errorMsg = data?.detail || data?.error || data?.user_message || 'Wallpaper generation failed'
-        return { success: false, error: errorMsg }
-      }
-
-      if (data.success && (data.wallpaper_url || data.public_url)) {
-        setGeneratedWallpaperUrl(data.wallpaper_url || data.public_url)
-        return { success: true, wallpaperUrl: data.wallpaper_url || data.public_url }
-      } else {
-        return { success: false, error: data?.user_message || data?.error || 'Wallpaper generation failed' }
-      }
-
-    } catch (err: any) {
-      let userMessage = err.message || 'Failed to generate wallpaper. Please try again.'
-
-      if (err.message?.includes('Failed to fetch')) {
-        userMessage = 'Cannot connect to server. Please check your internet connection.'
-      }
-
-      console.error('Wallpaper generation error:', err)
-      return { success: false, error: userMessage }
-    } finally {
-      setIsGeneratingCustom(false)
-    }
+            // Poll for completion
+            pollJobStatus(
+              data.job_id,
+              (result) => {
+                setIsGeneratingCustom(false)
+                setJobStatus('completed')
+                if (result.result?.wallpaper_url) {
+                  setGeneratedWallpaperUrl(result.result.wallpaper_url)
+                  resolve({ success: true, wallpaperUrl: result.result.wallpaper_url })
+                } else {
+                  resolve({ success: false, error: 'No wallpaper URL in result' })
+                }
+              },
+              (error) => {
+                setIsGeneratingCustom(false)
+                setJobStatus('failed')
+                setJobError(error)
+                resolve({ success: false, error })
+              }
+            )
+          } else {
+            setIsGeneratingCustom(false)
+            setJobStatus('failed')
+            resolve({ success: false, error: 'Failed to create job' })
+          }
+        })
+        .catch(err => {
+          console.error('Job creation error:', err)
+          setIsGeneratingCustom(false)
+          setJobStatus('failed')
+          resolve({ success: false, error: 'Failed to create job' })
+        })
+    })
   }
 
   const handleApplyWallpaper = async (wallpaperUrl: string): Promise<{ success: boolean; previewUrl?: string; error?: string }> => {
@@ -149,49 +203,65 @@ export default function Home() {
 
     setIsGeneratingCustom(true)
     setGenerateError(null)
+    setJobStatus('queued')
+    setJobError(null)
 
-    try {
+    return new Promise((resolve) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/ai-apply-wallpaper`, {
+
+      // Create job
+      fetch(`${apiUrl}/api/preview-jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: 'room_preview',
           image_url: selectedImage.uploadedUrl,
           wallpaper_url: wallpaperUrl,
           quality: selectedQuality,
         })
       })
+        .then(res => res.json())
+        .then(data => {
+          if (data.job_id) {
+            setPreviewJobId(data.job_id)
+            console.log(`Preview job created: ${data.job_id}`)
 
-      const data = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const errorMsg = data?.detail || data?.error || data?.user_message || 'Failed to apply wallpaper'
-        return { success: false, error: errorMsg }
-      }
-
-      if (data.success && data.preview_url) {
-        setPreviewUrl(data.preview_url)
-        // Clear generated wallpaper after successful application
-        setGeneratedWallpaperUrl(null)
-        return { success: true, previewUrl: data.preview_url }
-      } else {
-        return { success: false, error: data?.user_message || data?.error || 'Failed to apply wallpaper' }
-      }
-
-    } catch (err: any) {
-      let userMessage = err.message || 'Failed to apply wallpaper. Please try again.'
-
-      if (err.message?.includes('Failed to fetch')) {
-        userMessage = 'Cannot connect to server. Please check your internet connection.'
-      }
-
-      console.error('Wallpaper application error:', err)
-      return { success: false, error: userMessage }
-    } finally {
-      setIsGeneratingCustom(false)
-    }
+            // Poll for completion
+            pollJobStatus(
+              data.job_id,
+              (result) => {
+                setIsGeneratingCustom(false)
+                setJobStatus('completed')
+                if (result.result?.preview_url) {
+                  setPreviewUrl(result.result.preview_url)
+                  setGeneratedWallpaperUrl(null)  // Clear generated wallpaper
+                  resolve({ success: true, previewUrl: result.result.preview_url })
+                } else {
+                  resolve({ success: false, error: 'No preview URL in result' })
+                }
+              },
+              (error) => {
+                setIsGeneratingCustom(false)
+                setJobStatus('failed')
+                setJobError(error)
+                resolve({ success: false, error })
+              }
+            )
+          } else {
+            setIsGeneratingCustom(false)
+            setJobStatus('failed')
+            resolve({ success: false, error: 'Failed to create job' })
+          }
+        })
+        .catch(err => {
+          console.error('Job creation error:', err)
+          setIsGeneratingCustom(false)
+          setJobStatus('failed')
+          resolve({ success: false, error: 'Failed to create job' })
+        })
+    })
   }
 
   // Apply theme to document
@@ -474,8 +544,7 @@ export default function Home() {
                     onGenerateWallpaper={handleGenerateWallpaper}
                     onApplyWallpaper={handleApplyWallpaper}
                     isGenerating={isGeneratingCustom}
-                    roomImageUrl={selectedImage?.uploadedUrl}
-                    quality={selectedQuality}
+                    jobStatus={jobStatus}
                   />
                 </div>
               )}

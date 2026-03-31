@@ -1,6 +1,8 @@
 """
 AI Wallpaper Preview Generator using Gemini 3.1 Flash Image
 Single unified multimodal model for wallpaper application
+
+Includes retry logic with exponential backoff for transient failures.
 """
 
 import io
@@ -8,12 +10,16 @@ import os
 import logging
 import time
 import httpx
+import asyncio
 from typing import Optional, Dict, Any, Tuple, Literal
 from collections import OrderedDict
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Import retry wrapper
+from retry_wrapper import retry_async, is_transient_error, calculate_backoff_delay, MAX_RETRIES
 
 logger = logging.getLogger(__name__)
 
@@ -829,3 +835,138 @@ def generate_custom_wallpaper_ai(
             error_info["user_message"] = "Request timed out. Please check your connection and try again."
 
         return error_info
+
+
+# =============================================================================
+# Async Generation Functions with Retry Support
+# =============================================================================
+# These functions wrap the sync generation functions with retry logic
+# and are designed to be used with the job queue system
+
+
+async def generate_wallpaper_preview_async(
+    image_url: str,
+    wallpaper_url: str,
+    quality: QualityLevel = "1k",
+    room_image_bytes: Optional[bytes] = None,
+    room_mime_type: Optional[str] = None,
+    max_retries: int = 3
+) -> Optional[Dict[str, Any]]:
+    """
+    Async wrapper for wallpaper preview generation with retry support.
+
+    This function runs the blocking generation in a thread pool and applies
+    retry logic with exponential backoff for transient failures.
+
+    Args:
+        image_url: Room image URL
+        wallpaper_url: Wallpaper pattern URL
+        quality: Output quality preset
+        room_image_bytes: Optional pre-loaded room image bytes
+        room_mime_type: Optional MIME type for room_image_bytes
+        max_retries: Maximum retry attempts (default: 3)
+
+    Returns:
+        Dict with preview_url, timing, and metadata on success
+        Dict with error info on failure
+    """
+
+    async def _generate_with_retry():
+        """Internal async function for retry wrapper."""
+        # Run blocking generation in thread pool
+        result = await asyncio.to_thread(
+            generate_wallpaper_preview_ai,
+            image_url=image_url,
+            wallpaper_url=wallpaper_url,
+            quality=quality,
+            room_image_bytes=room_image_bytes,
+            room_mime_type=room_mime_type
+        )
+
+        # Check if result indicates failure with retryable error
+        if result and not result.get("success"):
+            error = result.get("error", "")
+            error_type = result.get("error_type", "")
+
+            # Check if this is a transient error that should be retried
+            if is_transient_error(Exception(error)):
+                # Raise exception to trigger retry
+                raise Exception(f"Transient error during generation: {error}")
+
+            # Non-retryable error - return as-is
+            return result
+
+        if result is None:
+            raise Exception("Generation returned None")
+
+        return result
+
+    try:
+        return await retry_async(
+            _generate_with_retry,
+            max_retries=max_retries,
+            base_delay=2.0
+        )
+    except Exception as e:
+        # All retries exhausted or non-retryable error
+        logger.error(f"Preview generation failed after retries: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "user_message": "AI preview generation failed after multiple attempts. Please try again."
+        }
+
+
+async def generate_wallpaper_texture_async(
+    prompt: str,
+    style_inspirations: list[str] = None,
+    max_retries: int = 3
+) -> Optional[Dict[str, Any]]:
+    """
+    Async wrapper for wallpaper texture generation with retry support.
+
+    Args:
+        prompt: User's text prompt describing desired wallpaper
+        style_inspirations: Optional list of style inspiration names
+        max_retries: Maximum retry attempts (default: 3)
+
+    Returns:
+        Dict with wallpaper_url and timing on success
+        Dict with error info on failure
+    """
+
+    async def _generate_with_retry():
+        """Internal async function for retry wrapper."""
+        result = await asyncio.to_thread(
+            generate_wallpaper_texture,
+            prompt=prompt,
+            style_inspirations=style_inspirations
+        )
+
+        # Check if result indicates failure with retryable error
+        if result and not result.get("success"):
+            error = result.get("error", "")
+            if is_transient_error(Exception(error)):
+                raise Exception(f"Transient error during texture generation: {error}")
+            return result
+
+        if result is None:
+            raise Exception("Texture generation returned None")
+
+        return result
+
+    try:
+        return await retry_async(
+            _generate_with_retry,
+            max_retries=max_retries,
+            base_delay=2.0
+        )
+    except Exception as e:
+        logger.error(f"Texture generation failed after retries: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "user_message": "Wallpaper texture generation failed after multiple attempts. Please try again."
+        }
