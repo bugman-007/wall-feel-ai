@@ -1,5 +1,5 @@
 import io
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
@@ -289,8 +289,8 @@ async def get_collections():
 async def get_products(
     collection: Optional[str] = None,
     category: Optional[str] = None,
-    style: Optional[List[str]] = None,
-    feel: Optional[List[str]] = None,
+    style: Optional[List[str]] = Query(default=None),
+    feel: Optional[List[str]] = Query(default=None),
     limit: int = 50
 ):
     """
