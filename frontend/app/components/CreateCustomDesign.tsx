@@ -170,45 +170,6 @@ export default function CreateCustomDesign({
               )}
             </button>
           </div>
-
-          {/* Style Inspiration Cards */}
-          <div>
-            <p className="text-xs text-center mb-4" style={{ color: 'var(--text-muted)' }}>
-              Click inspirations or write a prompt to generate
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-md">
-              {STYLE_INSPIRATIONS.map((style) => (
-                <button
-                  key={style.name}
-                  onClick={() => handleStyleInspirationClick(style.name)}
-                  className="group relative overflow-hidden rounded-lg transition-all hover:scale-105"
-                  style={{
-                    border: selectedStyleInspirations.includes(style.name) ? '2px solid var(--gold)' : '1px solid var(--border-light)',
-                  }}
-                >
-                  <div className="aspect-square relative">
-                    <Image
-                      src={style.image}
-                      alt={style.name}
-                      fill
-                      className="object-cover transition-transform group-hover:scale-110"
-                      sizes="(max-width: 768px) 50vw, 25vw"
-                    />
-                    {selectedStyleInspirations.includes(style.name) && (
-                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                        <svg className="w-8 h-8" style={{ color: 'var(--gold)' }} fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-center py-2" style={{ color: 'var(--text-primary)' }}>
-                    {style.name}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
         </>
       ) : (
         /* Step 2: Review and Apply */
