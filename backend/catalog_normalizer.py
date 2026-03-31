@@ -74,6 +74,8 @@ class NormalizedProduct:
     tags: List[str]
     app_categories: List[str]  # Derived categories from our grouping
     materials: List[NormalizedMaterial]
+    style_labels: List[str] = field(default_factory=list)  # Customer-facing style classification
+    feel_labels: List[str] = field(default_factory=list)   # Customer-facing feel classification
     vendor: Optional[str] = None
     product_type: Optional[str] = None
     available: bool = True
@@ -267,6 +269,12 @@ def normalize_product(shopify_product: Dict[str, Any]) -> NormalizedProduct:
     # Derive app categories
     app_categories = get_app_categories_from_collections(shopify_collections, tags)
 
+    # Derive customer-facing style and feel classifications
+    from classification_rules import classify_product_styles, classify_product_feels
+    title = shopify_product.get("title", "")
+    style_labels = classify_product_styles(shopify_collections, tags, title)
+    feel_labels = classify_product_feels(shopify_collections, tags, title)
+
     return NormalizedProduct(
         id=shopify_product.get("id", ""),
         handle=shopify_product.get("handle", ""),
@@ -278,6 +286,8 @@ def normalize_product(shopify_product: Dict[str, Any]) -> NormalizedProduct:
         tags=tags,
         app_categories=app_categories,
         materials=materials,
+        style_labels=style_labels,
+        feel_labels=feel_labels,
         vendor=shopify_product.get("vendor"),
         product_type=shopify_product.get("productType"),
         available=shopify_product.get("availableForSale", True)
@@ -296,6 +306,8 @@ def product_to_dict(product: NormalizedProduct) -> Dict[str, Any]:
         "shopifyCollections": product.shopify_collections,
         "tags": product.tags,
         "appCategories": product.app_categories,
+        "styleLabels": product.style_labels,
+        "feelLabels": product.feel_labels,
         "materials": [
             {
                 "variantId": m.variant_id,

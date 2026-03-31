@@ -33,9 +33,11 @@ interface WallpaperGridProps {
   onWallpaperSelect: (design: WallpaperDesign) => void
   selectedId?: string | null
   selectedCategory?: string | null
+  selectedStyles?: string[]
+  selectedFeels?: string[]
 }
 
-export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedCategory }: WallpaperGridProps) {
+export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedCategory, selectedStyles, selectedFeels }: WallpaperGridProps) {
   const [designs, setDesigns] = useState<WallpaperDesign[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,18 +49,27 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedC
 
   useEffect(() => {
     fetchCatalog()
-    setCurrentPage(0) // Reset pagination when category changes
-  }, [selectedCategory])
+    setCurrentPage(0) // Reset pagination when filters change
+  }, [selectedCategory, selectedStyles, selectedFeels])
 
   const fetchCatalog = async () => {
     try {
       setLoading(true)
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-      // Fetch from Shopify-backed endpoint with optional category filter
-      const url = selectedCategory
-        ? `${apiUrl}/api/catalog/products?category=${encodeURIComponent(selectedCategory)}`
-        : `${apiUrl}/api/catalog/products`
+      // Build query params
+      const params = new URLSearchParams()
+      if (selectedCategory) {
+        params.set('category', selectedCategory)
+      }
+      if (selectedStyles && selectedStyles.length > 0) {
+        selectedStyles.forEach(style => params.append('style', style))
+      }
+      if (selectedFeels && selectedFeels.length > 0) {
+        selectedFeels.forEach(feel => params.append('feel', feel))
+      }
+
+      const url = `${apiUrl}/api/catalog/products${params.toString() ? `?${params.toString()}` : ''}`
 
       const response = await fetch(url)
 
@@ -83,7 +94,9 @@ export default function WallpaperGrid({ onWallpaperSelect, selectedId, selectedC
         materials: product.materials || [],
         shopifyCollections: product.shopifyCollections || [],
         tags: product.tags || [],
-        available: product.available !== false
+        available: product.available !== false,
+        styleLabels: product.styleLabels || [],
+        feelLabels: product.feelLabels || []
       }))
 
       setDesigns(normalizedDesigns)

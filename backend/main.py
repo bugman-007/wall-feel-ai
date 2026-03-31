@@ -289,6 +289,8 @@ async def get_collections():
 async def get_products(
     collection: Optional[str] = None,
     category: Optional[str] = None,
+    style: Optional[List[str]] = None,
+    feel: Optional[List[str]] = None,
     limit: int = 50
 ):
     """
@@ -297,10 +299,17 @@ async def get_products(
     Query params:
     - collection: Filter by Shopify collection handle (e.g., "modern")
     - category: Filter by app category (matches Style, Space, etc.)
+    - style: Filter by style labels (can specify multiple: ?style=Modern&style=Luxury)
+    - feel: Filter by feel labels (can specify multiple: ?feel=Elegant&feel=Calm)
     - limit: Max products to return (default 50)
 
     Returns normalized product data ready for frontend display.
     Cache: 5 minutes
+
+    Filter logic:
+    - Products match if they contain ANY of the specified style labels
+    - Products match if they contain ANY of the specified feel labels
+    - If both style and feel are provided, products must match BOTH dimensions
     """
     try:
         client = get_shopify_client()
@@ -335,6 +344,26 @@ async def get_products(
 
         # Normalize products
         normalized = [normalize_product(p) for p in products]
+
+        # Apply style filter if provided
+        if style:
+            style_lower = [s.lower() for s in style]
+            normalized = [
+                p for p in normalized
+                if any(s.lower() in style_lower for s in p.style_labels)
+            ]
+
+        # Apply feel filter if provided
+        if feel:
+            feel_lower = [f.lower() for f in feel]
+            normalized = [
+                p for p in normalized
+                if any(f.lower() in feel_lower for f in p.feel_labels)
+            ]
+
+        # Apply limit after filtering
+        normalized = normalized[:limit]
+
         product_dicts = [product_to_dict(p) for p in normalized]
 
         # Add collection handles to each product for filtering
@@ -378,6 +407,29 @@ async def get_product(handle: str):
     except Exception as e:
         logger.error(f"Error fetching product {handle}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch product: {str(e)}")
+
+
+@app.get("/api/catalog/labels")
+async def get_classification_labels():
+    """
+    Get all available style and feel labels for filtering UI.
+
+    Returns:
+    {
+        "styles": ["Minimal", "Modern", "Luxury", ...],
+        "feels": ["Calm", "Warm", "Statement", ...]
+    }
+    """
+    try:
+        from classification_rules import get_all_style_labels, get_all_feel_labels
+
+        return {
+            "styles": get_all_style_labels(),
+            "feels": get_all_feel_labels()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching classification labels: {e}", exc_info=True)
+        return {"styles": [], "feels": []}
 
 
 @app.post("/api/upload")

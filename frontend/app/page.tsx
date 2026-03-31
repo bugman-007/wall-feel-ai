@@ -6,7 +6,7 @@ import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
 import PreviewDisplay from './components/PreviewDisplay'
 import QualitySelector from './components/QualitySelector'
-import CategoryFilter from './components/CategoryFilter'
+import StyleFeelFilter from './components/StyleFeelFilter'
 
 interface WallpaperDesign {
   id: string
@@ -46,10 +46,47 @@ export default function Home() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([])
+  const [selectedFeels, setSelectedFeels] = useState<string[]>([])
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
+  }
+
+  const handleStyleSelect = (style: string) => {
+    setSelectedStyles(prev =>
+      prev.includes(style)
+        ? prev.filter(s => s !== style)
+        : [...prev, style]
+    )
+  }
+
+  const handleFeelSelect = (feel: string) => {
+    setSelectedFeels(prev =>
+      prev.includes(feel)
+        ? prev.filter(f => f !== feel)
+        : [...prev, feel]
+    )
+  }
+
+  const handleSurpriseMe = () => {
+    // Randomly select a style and feel to show variety
+    const allStyles = ['Minimal', 'Modern', 'Luxury', 'Organic', 'Bold', 'Classic', 'Playful', 'Commercial']
+    const allFeels = ['Calm', 'Warm', 'Statement', 'Elegant', 'Creative']
+
+    // Pick 1-2 random styles
+    const numStyles = Math.floor(Math.random() * 2) + 1
+    const shuffledStyles = allStyles.sort(() => 0.5 - Math.random())
+    const randomStyles = shuffledStyles.slice(0, numStyles)
+
+    // Pick 1 random feel
+    const randomFeel = allFeels[Math.floor(Math.random() * allFeels.length)]
+
+    setSelectedStyles(randomStyles)
+    setSelectedFeels([randomFeel])
+
+    // Scroll to wallpaper grid
+    document.getElementById('wallpaper-grid')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   // Apply theme to document
@@ -265,25 +302,33 @@ export default function Home() {
           <ImageUpload onImageSelect={handleImageSelect} />
         </div>
 
-        {/* Step 2: Choose Category */}
+        {/* Step 2: Choose Style & Feel */}
         {selectedImage && (
           <div className="step-section">
-            <h3 className="step-title">2. Browse Categories</h3>
-            <CategoryFilter
-              selectedCategory={selectedCategory}
-              onCategorySelect={setSelectedCategory}
+            <h3 className="step-title">2. Choose Style & Feel</h3>
+            <StyleFeelFilter
+              selectedStyles={selectedStyles}
+              selectedFeels={selectedFeels}
+              onStyleSelect={handleStyleSelect}
+              onFeelSelect={handleFeelSelect}
+              onSurpriseMe={handleSurpriseMe}
             />
           </div>
         )}
 
         {/* Step 3: Choose Wallpaper */}
         {selectedImage && (
-          <div className="step-section">
-            <h3 className="step-title">{selectedCategory ? `3. Choose ${selectedCategory} Designs` : '3. Choose Your Wallpaper Design'}</h3>
+          <div className="step-section" id="wallpaper-grid">
+            <h3 className="step-title">
+              {selectedStyles.length > 0 || selectedFeels.length > 0
+                ? `3. Choose from ${selectedStyles.length + selectedFeels.length} Filter${(selectedStyles.length + selectedFeels.length) > 1 ? 's' : ''}`
+                : '3. Choose Your Wallpaper Design'}
+            </h3>
             <WallpaperGrid
               onWallpaperSelect={handleWallpaperSelect}
               selectedId={selectedWallpaper?.id}
-              selectedCategory={selectedCategory}
+              selectedStyles={selectedStyles}
+              selectedFeels={selectedFeels}
             />
           </div>
         )}
