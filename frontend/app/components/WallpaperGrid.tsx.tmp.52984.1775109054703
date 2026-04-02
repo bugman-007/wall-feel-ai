@@ -76,8 +76,7 @@ export default function WallpaperGrid({
       fetchCatalog()
     }
     setCurrentPage(0) // Reset pagination when filters change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedStyles, selectedFeels, preFetchedData, parentLoading, parentError, usePreFetch]) // fetchCatalog intentionally excluded
+  }, [selectedCategory, selectedStyles, selectedFeels, preFetchedData, parentLoading, parentError, usePreFetch])
 
   const fetchCatalog = async () => {
     try {

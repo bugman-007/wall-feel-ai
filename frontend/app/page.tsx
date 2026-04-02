@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import ImageUpload from './components/ImageUpload'
 import WallpaperGrid from './components/WallpaperGrid'
@@ -8,6 +8,7 @@ import PreviewDisplay from './components/PreviewDisplay'
 import QualitySelector from './components/QualitySelector'
 import StyleFeelFilter from './components/StyleFeelFilter'
 import CreateCustomDesign from './components/CreateCustomDesign'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 interface WallpaperDesign {
   id: string
@@ -57,6 +58,13 @@ export default function Home() {
   const [previewJobId, setPreviewJobId] = useState<string | null>(null)
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [jobError, setJobError] = useState<string | null>(null)
+  // Catalog pre-fetch state
+  const [catalogData, setCatalogData] = useState<WallpaperDesign[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+
+  // Refs for cleanup
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -119,7 +127,7 @@ export default function Home() {
           onError(data.error_message || 'Job failed')
         } else {
           // Still processing or queued, continue polling
-          setTimeout(poll, pollInterval)
+          pollTimeoutRef.current = setTimeout(poll, pollInterval)
         }
       } catch (err: any) {
         console.error('Polling error:', err)
@@ -129,6 +137,33 @@ export default function Home() {
 
     poll()
   }
+
+  // Cleanup function for polling
+  const cleanupPolling = () => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current)
+      pollTimeoutRef.current = null
+    }
+  }
+
+  // Cleanup polling on component unmount
+  useEffect(() => {
+    return () => {
+      cleanupPolling()
+    }
+  }, [])
+
+  // Refetch catalog when filters change (only after initial load)
+  useEffect(() => {
+    if (catalogData.length > 0 || catalogLoading) {
+      // Only refetch if we already have data or are loading (meaning user changed filters)
+      const timeoutId = setTimeout(() => {
+        fetchCatalog()
+      }, 100) // Small debounce to prevent rapid refetches
+      return () => clearTimeout(timeoutId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStyles, selectedFeels]) // Intentionally excluding catalogData, catalogLoading, fetchCatalog
 
   const handleGenerateWallpaper = async (prompt: string, styleInspirations: string[]): Promise<{ success: boolean; wallpaperUrl?: string; error?: string }> => {
     if (!selectedImage?.uploadedUrl) {
@@ -161,7 +196,7 @@ export default function Home() {
             setWallpaperJobId(data.job_id)
             console.log(`Wallpaper job created: ${data.job_id}`)
 
-            // Poll for completion
+            // Poll for completion (cleanup handled by useEffect)
             pollJobStatus(
               data.job_id,
               (result) => {
@@ -228,7 +263,7 @@ export default function Home() {
             setPreviewJobId(data.job_id)
             console.log(`Preview job created: ${data.job_id}`)
 
-            // Poll for completion
+            // Poll for completion (cleanup handled by useEffect)
             pollJobStatus(
               data.job_id,
               (result) => {
@@ -273,6 +308,65 @@ export default function Home() {
     setSelectedImage({ file, preview, uploadedUrl })
     setGenerateError(null)
     setPreviewUrl(null)
+    // Pre-fetch catalog during upload for better UX
+    fetchCatalog()
+  }
+
+  const fetchCatalog = async () => {
+    // Don't refetch if already loading or already have data
+    if (catalogLoading || catalogData.length > 0) return
+
+    setCatalogLoading(true)
+    setCatalogError(null)
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+      // Build query params based on current filters
+      const params = new URLSearchParams()
+      if (selectedStyles && selectedStyles.length > 0) {
+        selectedStyles.forEach(style => params.append('style', style))
+      }
+      if (selectedFeels && selectedFeels.length > 0) {
+        selectedFeels.forEach(feel => params.append('feel', feel))
+      }
+
+      const url = `${apiUrl}/api/catalog/products${params.toString() ? `?${params.toString()}` : ''}`
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch catalog')
+      }
+
+      const data = await response.json()
+
+      // Normalize Shopify data to our interface
+      const normalizedDesigns = (data.products || []).map((product: any) => ({
+        id: product.handle || product.id,
+        handle: product.handle,
+        name: product.title || product.name,
+        title: product.title,
+        category: product.appCategories?.[0] || product.shopifyCollections?.[0] || 'default',
+        appCategories: product.appCategories || [],
+        thumbnail_url: product.image || '',
+        image: product.image,
+        full_url: product.image || '',
+        description: product.description || '',
+        materials: product.materials || [],
+        shopifyCollections: product.shopifyCollections || [],
+        tags: product.tags || [],
+        available: product.available !== false,
+        styleLabels: product.styleLabels || [],
+        feelLabels: product.feelLabels || []
+      }))
+
+      setCatalogData(normalizedDesigns)
+    } catch (err) {
+      setCatalogError('Failed to load wallpaper designs')
+      console.error('Catalog fetch error:', err)
+    } finally {
+      setCatalogLoading(false)
+    }
   }
 
   const handleWallpaperSelect = (design: WallpaperDesign) => {
@@ -426,47 +520,52 @@ export default function Home() {
         </p>
 
         {/* Step 1: Upload - Always shown first */}
-        <div className="step-section">
-          <h3 className="step-title">1. Upload Your Room Photo</h3>
-          <ImageUpload onImageSelect={handleImageSelect} />
-        </div>
+        <ErrorBoundary>
+          <div className="step-section">
+            <h3 className="step-title">1. Upload Your Room Photo</h3>
+            <ImageUpload onImageSelect={handleImageSelect} />
+          </div>
+        </ErrorBoundary>
 
         {/* Tabs - shown after image upload */}
         {selectedImage && (
           <>
             {/* Tab Navigation */}
-            <div className="flex border-b mt-8" style={{ borderColor: 'var(--border-light)' }}>
-              <button
-                onClick={() => setActiveTab('browse')}
-                className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'browse' ? 'border-gold' : 'border-transparent'}`}
-                style={{
-                  background: activeTab === 'browse' ? 'var(--bg-secondary)' : 'transparent',
-                  color: activeTab === 'browse' ? 'var(--gold)' : 'var(--text-secondary)',
-                }}
-              >
-                Browse Catalog
-              </button>
-              <button
-                onClick={() => setActiveTab('create')}
-                className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'create' ? 'border-gold' : 'border-transparent'}`}
-                style={{
-                  background: activeTab === 'create' ? 'var(--bg-secondary)' : 'transparent',
-                  color: activeTab === 'create' ? 'var(--gold)' : 'var(--text-secondary)',
-                }}
-              >
-                Create Your Own
-              </button>
-            </div>
+            <ErrorBoundary>
+              <div className="flex border-b mt-8" style={{ borderColor: 'var(--border-light)' }}>
+                <button
+                  onClick={() => setActiveTab('browse')}
+                  className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'browse' ? 'border-gold' : 'border-transparent'}`}
+                  style={{
+                    background: activeTab === 'browse' ? 'var(--bg-secondary)' : 'transparent',
+                    color: activeTab === 'browse' ? 'var(--gold)' : 'var(--text-secondary)',
+                  }}
+                >
+                  Browse Catalog
+                </button>
+                <button
+                  onClick={() => setActiveTab('create')}
+                  className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'create' ? 'border-gold' : 'border-transparent'}`}
+                  style={{
+                    background: activeTab === 'create' ? 'var(--bg-secondary)' : 'transparent',
+                    color: activeTab === 'create' ? 'var(--gold)' : 'var(--text-secondary)',
+                  }}
+                >
+                  Create Your Own
+                </button>
+              </div>
+            </ErrorBoundary>
 
             {/* Tab Content */}
             <div className="mt-6">
               {/* Browse Catalog Tab */}
               {activeTab === 'browse' && (
-                <div className="space-y-6">
-                  {/* Style & Feel Filter */}
-                  <div className="step-section">
-                    <h3 className="step-title">2. Choose Style & Feel</h3>
-                    <StyleFeelFilter
+                <ErrorBoundary>
+                  <div className="space-y-6">
+                    {/* Style & Feel Filter */}
+                    <div className="step-section">
+                      <h3 className="step-title">2. Choose Style & Feel</h3>
+                      <StyleFeelFilter
                       selectedStyles={selectedStyles}
                       selectedFeels={selectedFeels}
                       onStyleSelect={handleStyleSelect}
@@ -487,6 +586,10 @@ export default function Home() {
                       selectedId={selectedWallpaper?.id}
                       selectedStyles={selectedStyles}
                       selectedFeels={selectedFeels}
+                      preFetchedData={catalogData}
+                      isLoading={catalogLoading}
+                      error={catalogError}
+                      onRetry={fetchCatalog}
                     />
                   </div>
 
@@ -534,19 +637,22 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+                </ErrorBoundary>
               )}
 
               {/* Create Your Own Tab */}
               {activeTab === 'create' && (
-                <div className="step-section">
-                  <h3 className="step-title">2. Create Your Custom Wallpaper</h3>
-                  <CreateCustomDesign
-                    onGenerateWallpaper={handleGenerateWallpaper}
-                    onApplyWallpaper={handleApplyWallpaper}
-                    isGenerating={isGeneratingCustom}
-                    jobStatus={jobStatus}
-                  />
-                </div>
+                <ErrorBoundary>
+                  <div className="step-section">
+                    <h3 className="step-title">2. Create Your Custom Wallpaper</h3>
+                    <CreateCustomDesign
+                      onGenerateWallpaper={handleGenerateWallpaper}
+                      onApplyWallpaper={handleApplyWallpaper}
+                      isGenerating={isGeneratingCustom}
+                      jobStatus={jobStatus}
+                    />
+                  </div>
+                </ErrorBoundary>
               )}
             </div>
           </>
@@ -580,15 +686,17 @@ export default function Home() {
 
         {/* Preview Display */}
         {previewUrl && selectedImage?.preview && (
-          <div className="step-section">
-            <h3 className="step-title" style={{ textAlign: 'center' }}>Your Preview</h3>
-            <PreviewDisplay
-              originalUrl={selectedImage.preview}
-              previewUrl={previewUrl}
-              onClose={() => setPreviewUrl(null)}
-              quality={selectedQuality}
-            />
-          </div>
+          <ErrorBoundary>
+            <div className="step-section">
+              <h3 className="step-title" style={{ textAlign: 'center' }}>Your Preview</h3>
+              <PreviewDisplay
+                originalUrl={selectedImage.preview}
+                previewUrl={previewUrl}
+                onClose={() => setPreviewUrl(null)}
+                quality={selectedQuality}
+              />
+            </div>
+          </ErrorBoundary>
         )}
       </section>
 

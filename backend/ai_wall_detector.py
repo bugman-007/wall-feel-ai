@@ -457,6 +457,79 @@ def generate_wallpaper_preview_gemini(
         return error_info
 
 
+def _build_enhanced_prompt(
+    prompt: str,
+    style_inspirations: list[str] = None
+) -> str:
+    """
+    Build enhanced prompt from user prompt and style inspirations.
+
+    Args:
+        prompt: User's base prompt
+        style_inspirations: Optional list of style inspiration names
+
+    Returns:
+        Enhanced prompt with style elements incorporated
+    """
+    style_prompts = []
+    if style_inspirations:
+        for style_name in style_inspirations:
+            if style_name in STYLE_INSPIRATION_PROMPTS:
+                style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
+
+    if style_prompts:
+        enhanced_prompt = f"{prompt}. Style elements: {'; '.join(style_prompts)}"
+    else:
+        enhanced_prompt = prompt
+
+    # Ensure prompt is descriptive enough
+    if len(enhanced_prompt) < 20:
+        enhanced_prompt = f"Generate a beautiful wallpaper pattern with: {enhanced_prompt}"
+
+    return enhanced_prompt
+
+
+def _generate_texture_bytes(
+    client,
+    enhanced_prompt: str
+) -> tuple[Optional[bytes], float]:
+    """
+    Generate wallpaper texture bytes using Gemini 2.5 Flash.
+
+    Args:
+        client: Gemini API client
+        enhanced_prompt: Prompt for texture generation
+
+    Returns:
+        Tuple of (wallpaper_bytes, generation_elapsed)
+    """
+    from google.genai import types
+
+    logger.info("Generating wallpaper texture with Gemini 2.5 Flash...")
+    generation_start = time.time()
+
+    texture_response = client.models.generate_content(
+        model='gemini-2.5-flash-image',
+        contents=[
+            f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
+            "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
+        ],
+        config=types.GenerateContentConfig(
+            response_modalities=['IMAGE'],
+        )
+    )
+
+    generation_elapsed = time.time() - generation_start
+    logger.info(f"Texture generation completed in {generation_elapsed:.2f}s")
+
+    wallpaper_bytes = _extract_generated_image(texture_response)
+    if not wallpaper_bytes:
+        logger.warning("Gemini did not return a valid wallpaper texture")
+        return None, generation_elapsed
+
+    return wallpaper_bytes, generation_elapsed
+
+
 def generate_wallpaper_texture(
     prompt: str,
     style_inspirations: list[str] = None
@@ -477,7 +550,6 @@ def generate_wallpaper_texture(
     """
     try:
         from google import genai
-        from google.genai import types
         from r2_client import r2_client
         import uuid
 
@@ -489,47 +561,13 @@ def generate_wallpaper_texture(
         client = genai.Client(api_key=api_key)
         start_time = time.time()
 
-        # Build enhanced prompt from style inspirations
-        style_prompts = []
-        if style_inspirations:
-            for style_name in style_inspirations:
-                if style_name in STYLE_INSPIRATION_PROMPTS:
-                    style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
-
-        # Combine user prompt with style inspirations
-        if style_prompts:
-            enhanced_prompt = f"{prompt}. Style elements: {'; '.join(style_prompts)}"
-        else:
-            enhanced_prompt = prompt
-
-        # Ensure prompt is descriptive enough
-        if len(enhanced_prompt) < 20:
-            enhanced_prompt = f"Generate a beautiful wallpaper pattern with: {enhanced_prompt}"
-
+        # Build enhanced prompt
+        enhanced_prompt = _build_enhanced_prompt(prompt, style_inspirations)
         logger.info(f"Texture generation request: prompt='{enhanced_prompt[:100]}...'")
 
-        # Generate wallpaper texture using Gemini 2.5 Flash
-        logger.info("Generating wallpaper texture with Gemini 2.5 Flash...")
-        generation_start = time.time()
-
-        texture_response = client.models.generate_content(
-            model='gemini-2.5-flash-image',
-            contents=[
-                f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
-                "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
-            ],
-            config=types.GenerateContentConfig(
-                response_modalities=['IMAGE'],
-            )
-        )
-
-        generation_elapsed = time.time() - generation_start
-        logger.info(f"Texture generation completed in {generation_elapsed:.2f}s")
-
-        # Extract generated wallpaper texture
-        wallpaper_bytes = _extract_generated_image(texture_response)
+        # Generate texture bytes
+        wallpaper_bytes, generation_elapsed = _generate_texture_bytes(client, enhanced_prompt)
         if not wallpaper_bytes:
-            logger.warning("Gemini did not return a valid wallpaper texture")
             return None
 
         # Detect MIME type
@@ -588,7 +626,6 @@ def generate_wallpaper_preview_ai(
     image_url: str,
     wallpaper_url: str,
     quality: QualityLevel = "1k",
-    segmentation: Optional[list] = None,
     room_image_bytes: Optional[bytes] = None,
     room_mime_type: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
@@ -605,14 +642,12 @@ def generate_wallpaper_preview_ai(
         image_url: Room image URL
         wallpaper_url: Wallpaper pattern URL
         quality: Output quality preset (1k, 2k, 4k, 8k) - default 1k
-        segmentation: Deprecated - not used in new flow
         room_image_bytes: Optional pre-loaded room image bytes (skips download)
         room_mime_type: Optional MIME type for room_image_bytes
 
     Returns:
         Dict with preview_url, timing breakdown, and metadata
     """
-    _ = segmentation  # Mark as intentionally unused
     return generate_wallpaper_preview_gemini(
         image_url, wallpaper_url, quality=quality,
         room_image_bytes=room_image_bytes, room_mime_type=room_mime_type
@@ -628,13 +663,16 @@ def generate_custom_wallpaper_ai(
     room_mime_type: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate custom wallpaper from text prompt using Gemini 2.5 Flash Image
+    Generate custom wallpaper from text prompt using Gemini AI
 
     Flow:
     1. Build enhanced prompt from user prompt + style inspirations
     2. Generate wallpaper texture using Gemini 2.5 Flash (fast generation)
     3. Apply generated wallpaper to room using Gemini 3.1 Flash Image
     4. Return final preview
+
+    This function composes _generate_texture_bytes and generate_wallpaper_preview_gemini
+    to avoid code duplication.
 
     Args:
         image_url: Room image URL (used for caching key)
@@ -652,7 +690,6 @@ def generate_custom_wallpaper_ai(
         from google.genai import types
         from r2_client import r2_client
         import uuid
-        import concurrent.futures
         import io
         from PIL import Image as PILImage
 
@@ -664,23 +701,8 @@ def generate_custom_wallpaper_ai(
         client = genai.Client(api_key=api_key)
         start_time = time.time()
 
-        # Build enhanced prompt from style inspirations
-        style_prompts = []
-        if style_inspirations:
-            for style_name in style_inspirations:
-                if style_name in STYLE_INSPIRATION_PROMPTS:
-                    style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
-
-        # Combine user prompt with style inspirations
-        if style_prompts:
-            enhanced_prompt = f"{prompt}. Style elements: {'; '.join(style_prompts)}"
-        else:
-            enhanced_prompt = prompt
-
-        # Ensure prompt is descriptive enough for generation
-        if len(enhanced_prompt) < 20:
-            enhanced_prompt = f"Generate a beautiful wallpaper pattern with: {enhanced_prompt}"
-
+        # Build enhanced prompt
+        enhanced_prompt = _build_enhanced_prompt(prompt, style_inspirations)
         logger.info(f"Custom design request: prompt='{enhanced_prompt[:100]}...', style_count={len(style_inspirations or [])}")
 
         # Track timing
@@ -711,25 +733,9 @@ def generate_custom_wallpaper_ai(
         logger.info("Step 1: Generating wallpaper texture with Gemini 2.5 Flash (fast)...")
         texture_generation_start = time.time()
 
-        # Use Gemini 2.5 Flash for fast texture generation
-        texture_response = client.models.generate_content(
-            model='gemini-2.5-flash-image',
-            contents=[
-                f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
-                "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
-            ],
-            config=types.GenerateContentConfig(
-                response_modalities=['IMAGE'],
-            )
-        )
-
-        texture_generation_elapsed = time.time() - texture_generation_start
-        logger.info(f"Texture generation completed in {texture_generation_elapsed:.2f}s")
-
-        # Extract generated wallpaper texture
-        wallpaper_bytes = _extract_generated_image(texture_response)
+        # Generate texture bytes using shared helper
+        wallpaper_bytes, texture_generation_elapsed = _generate_texture_bytes(client, enhanced_prompt)
         if not wallpaper_bytes:
-            logger.warning("Gemini did not return a valid wallpaper texture")
             return None
 
         # Create wallpaper image object
@@ -743,7 +749,7 @@ def generate_custom_wallpaper_ai(
         # Create room image object
         room_image = types.Part.from_bytes(data=room_image_bytes, mime_type=actual_room_mime)
 
-        # Apply wallpaper to room
+        # Apply wallpaper to room using shared Gemini call logic
         apply_response = client.models.generate_content(
             model='gemini-3.1-flash-image-preview',
             contents=[
