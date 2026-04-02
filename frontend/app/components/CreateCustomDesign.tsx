@@ -78,13 +78,13 @@ export default function CreateCustomDesign({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 custom-design-shell">
       {/* Step 1: Generate Wallpaper Texture */}
       {!generatedWallpaper ? (
         <>
           {/* Prompt Input */}
           <div>
-            <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-semibold mb-2 luxury-label">
               Describe your dream wallpaper
             </label>
             <textarea
@@ -95,44 +95,23 @@ export default function CreateCustomDesign({
               }}
               placeholder="Luxurious warm and elegant wallpaper with subtle texture..."
               rows={3}
-              className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-[var(--gold)] transition-all"
-              style={{
-                background: 'var(--bg-primary)',
-                borderColor: 'var(--border-light)',
-                color: 'var(--text-primary)',
-              }}
+              className="w-full luxury-textarea"
             />
           </div>
 
           {/* Style Inspiration */}
           <div>
-            <label className="block text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-semibold mb-3 luxury-label">
               Style inspiration (optional)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 filter-chip-row">
               {STYLE_INSPIRATIONS.map((style) => {
                 const isSelected = selectedStyleInspirations.includes(style.name)
                 return (
                   <button
                     key={style.name}
                     onClick={() => handleStyleInspirationClick(style.name)}
-                    className="px-4 py-2 text-sm font-medium transition-all"
-                    style={{
-                      background: isSelected ? 'var(--gold)' : 'var(--bg-secondary)',
-                      border: '1px solid ' + (isSelected ? 'var(--gold)' : 'var(--border-light)'),
-                      color: isSelected ? 'white' : 'var(--text-secondary)',
-                      borderRadius: '4px',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.background = 'var(--panel)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.background = 'var(--bg-secondary)'
-                      }
-                    }}
+                    className={`filter-chip ${isSelected ? 'is-selected' : ''}`}
                   >
                     {style.name}
                   </button>
@@ -142,28 +121,11 @@ export default function CreateCustomDesign({
           </div>
 
           {/* Generate Button */}
-          <div className="max-w-xs">
+          <div className="max-w-xs action-stack">
             <button
               onClick={handleGenerateClick}
               disabled={isGenerating || (!prompt && selectedStyleInspirations.length === 0)}
-              className="w-full py-4 rounded-lg font-semibold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: isGenerating ? 'var(--border-light)' : 'linear-gradient(135deg, var(--gold), #c9a959)',
-                color: 'white',
-                boxShadow: !isGenerating ? '0 4px 12px rgba(200, 170, 117, 0.3)' : 'none',
-              }}
-              onMouseEnter={(e) => {
-                if (!isGenerating) {
-                  e.currentTarget.style.transform = 'translateY(-2px)'
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(200, 170, 117, 0.4)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isGenerating) {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(200, 170, 117, 0.3)'
-                }
-              }}
+              className="luxury-submit-btn"
             >
               {isGenerating ? (
                 <span className="flex items-center justify-center space-x-2">
@@ -186,7 +148,7 @@ export default function CreateCustomDesign({
           {/* Job Status Message */}
           {isGenerating && jobStatus && (
             <div className="text-center max-w-xs mx-auto">
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-sm inline-status">
                 {jobStatus === 'queued' && 'AI service is busy right now. Retrying automatically...'}
                 {jobStatus === 'processing' && 'Creating your custom wallpaper...'}
               </p>
@@ -194,27 +156,27 @@ export default function CreateCustomDesign({
           )}
 
           {generationError && (
-            <div className="p-4 rounded-lg text-center max-w-md" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--text-secondary)' }}>
+            <div className="status-card status-card-error text-center max-w-md">
               <p className="text-sm">{generationError}</p>
             </div>
           )}
         </>
       ) : (
         /* Step 2: Review and Apply */
-        <div className="space-y-6">
-          <div className="text-center">
-            <h4 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+        <div className="space-y-6 generated-review-shell">
+          <div className="text-center generated-review-header">
+            <h4 className="text-lg font-semibold mb-2 generated-review-title">
               Your Generated Wallpaper
             </h4>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-sm generated-review-copy">
               Review the wallpaper texture. Apply it to your room if you&apos;re satisfied.
             </p>
           </div>
 
           {/* Wallpaper Preview - Centered with max width */}
           <div className="flex justify-center">
-            <div className="relative rounded-lg overflow-hidden border-2 w-full max-w-xs" style={{ borderColor: 'var(--gold)' }}>
-              <div className="aspect-square relative">
+            <div className="generated-wallpaper-stage">
+              <div className="aspect-square relative generated-wallpaper-media">
                 <Image
                   src={generatedWallpaper}
                   alt="Generated wallpaper texture"
@@ -227,28 +189,11 @@ export default function CreateCustomDesign({
           </div>
 
           {/* Action Buttons */}
-          <div className="space-y-3 max-w-xs mx-auto">
+          <div className="space-y-3 max-w-xs mx-auto action-stack">
             <button
               onClick={handleApplyClick}
               disabled={isApplying}
-              className="w-full py-4 rounded-lg font-semibold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: isApplying ? 'var(--border-light)' : 'linear-gradient(135deg, var(--gold), #c9a959)',
-                color: 'white',
-                boxShadow: !isApplying ? '0 4px 12px rgba(200, 170, 117, 0.3)' : 'none',
-              }}
-              onMouseEnter={(e) => {
-                if (!isApplying) {
-                  e.currentTarget.style.transform = 'translateY(-2px)'
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(200, 170, 117, 0.4)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isApplying) {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(200, 170, 117, 0.3)'
-                }
-              }}
+              className="luxury-submit-btn"
             >
               {isApplying ? (
                 <span className="flex items-center justify-center space-x-2">
@@ -266,22 +211,7 @@ export default function CreateCustomDesign({
             <button
               onClick={handleRegenerateClick}
               disabled={isApplying}
-              className="w-full py-3 rounded-lg font-medium transition-all disabled:opacity-50"
-              style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-light)',
-                color: 'var(--text-secondary)',
-              }}
-              onMouseEnter={(e) => {
-                if (!isApplying) {
-                  e.currentTarget.style.background = 'var(--panel)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isApplying) {
-                  e.currentTarget.style.background = 'var(--bg-secondary)'
-                }
-              }}
+              className="luxury-secondary-btn"
             >
               Generate New Design
             </button>
@@ -289,12 +219,11 @@ export default function CreateCustomDesign({
 
           {/* Apply Error */}
           {applyError && (
-            <div className="p-4 rounded-lg text-center max-w-xs mx-auto" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--text-secondary)' }}>
+            <div className="status-card status-card-error text-center max-w-xs mx-auto">
               <p className="text-sm">{applyError}</p>
               <button
                 onClick={handleRegenerateClick}
-                className="text-sm font-medium mt-2 hover:underline"
-                style={{ color: 'var(--gold)' }}
+                className="text-sm font-medium mt-2 luxury-inline-link"
               >
                 Try a different design
               </button>

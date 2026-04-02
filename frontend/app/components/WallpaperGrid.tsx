@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 
 interface Material {
@@ -53,35 +53,33 @@ export default function WallpaperGrid({
   error: parentError,
   onRetry
 }: WallpaperGridProps) {
-  const [designs, setDesigns] = useState<WallpaperDesign[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [fetchedDesigns, setFetchedDesigns] = useState<WallpaperDesign[]>([])
+  const [fetchLoading, setFetchLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
 
-  const ITEMS_PER_PAGE = 12 // 3 rows x 4 columns on large screens
+  const ITEMS_PER_PAGE = 12
+  const usePreFetch = preFetchedData !== undefined && parentLoading !== undefined
+  const designs = usePreFetch ? (preFetchedData || []) : fetchedDesigns
+  const loading = usePreFetch ? (parentLoading || false) : fetchLoading
+  const error = usePreFetch ? (parentError || null) : fetchError
   const totalPages = Math.ceil(designs.length / ITEMS_PER_PAGE)
   const paginatedDesigns = designs.slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
 
-  // Use pre-fetched data if provided, otherwise fetch internally
-  const usePreFetch = preFetchedData !== undefined && parentLoading !== undefined
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [selectedCategory, selectedStyles, selectedFeels, preFetchedData])
 
   useEffect(() => {
-    if (usePreFetch) {
-      // Use pre-fetched data from parent
-      setDesigns(preFetchedData || [])
-      setLoading(parentLoading || false)
-      setError(parentError || null)
-    } else {
-      // Fetch internally (legacy mode)
+    if (!usePreFetch) {
       fetchCatalog()
     }
-    setCurrentPage(0) // Reset pagination when filters change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedStyles, selectedFeels, preFetchedData, parentLoading, parentError, usePreFetch]) // fetchCatalog intentionally excluded
+  }, [selectedCategory, selectedStyles, selectedFeels, usePreFetch])
 
   const fetchCatalog = async () => {
     try {
-      setLoading(true)
+      setFetchLoading(true)
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
       // Build query params
@@ -126,13 +124,13 @@ export default function WallpaperGrid({
         feelLabels: product.feelLabels || []
       }))
 
-      setDesigns(normalizedDesigns)
-      setError(null)
+      setFetchedDesigns(normalizedDesigns)
+      setFetchError(null)
     } catch (err) {
-      setError('Failed to load wallpaper designs. Please try again.')
+      setFetchError('Failed to load wallpaper designs. Please try again.')
       console.error('Catalog fetch error:', err)
     } finally {
-      setLoading(false)
+      setFetchLoading(false)
     }
   }
 
@@ -146,7 +144,7 @@ export default function WallpaperGrid({
 
   if (error) {
     return (
-      <div className="p-6 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
+      <div className="status-card status-card-error">
         <div className="flex items-center space-x-2">
           <svg className="w-5 h-5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -175,24 +173,19 @@ export default function WallpaperGrid({
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 wallpaper-gallery">
         {paginatedDesigns.map((design) => (
           <button
             key={design.id}
             onClick={() => onWallpaperSelect(design)}
-            className="group relative overflow-hidden transition-all duration-300 hover:scale-105 card"
-            style={{
-              border: selectedId === design.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
-              boxShadow: selectedId === design.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'none',
-              transform: selectedId === design.id ? 'scale(1.02)' : 'none'
-            }}
+            className={`group relative overflow-hidden transition-all duration-300 card wallpaper-card ${selectedId === design.id ? 'is-selected' : ''}`}
           >
             {/* Gold glow overlay for selected state */}
             {selectedId === design.id && (
-              <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 2px var(--gold)', zIndex: 10 }} />
+              <div className="absolute inset-0 pointer-events-none wallpaper-card-glow" />
             )}
 
-            <div className="aspect-square relative" style={{ background: 'var(--bg-secondary)' }}>
+            <div className="aspect-square relative wallpaper-card-media">
               <Image
                 src={design.thumbnail_url}
                 alt={design.name}
@@ -202,7 +195,7 @@ export default function WallpaperGrid({
               />
 
               {/* Overlay on hover */}
-              <div className="absolute inset-0 transition-opacity duration-200 flex items-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', opacity: 0 }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}>
+              <div className="absolute inset-0 transition-opacity duration-200 flex items-end wallpaper-card-overlay">
                 <div className="w-full p-3">
                   <p className="text-white text-sm font-medium truncate">
                     {design.name}
@@ -215,7 +208,7 @@ export default function WallpaperGrid({
 
               {/* Selected indicator - black check in circle */}
               {selectedId === design.id && (
-                <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
+                <div className="wallpaper-card-check">
                   <svg className="w-4 h-4" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
@@ -224,11 +217,11 @@ export default function WallpaperGrid({
             </div>
 
             {/* Name below image */}
-            <div className="mt-2 px-1">
-              <p className={`text-sm font-medium transition-colors ${selectedId === design.id ? 'text-primary' : ''}`} style={{ color: selectedId === design.id ? 'var(--gold)' : 'var(--text-primary)' }}>
+            <div className="mt-2 px-1 wallpaper-card-caption">
+              <p className="text-sm font-medium transition-colors wallpaper-card-title">
                 {design.name}
               </p>
-              <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-xs capitalize wallpaper-card-category">
                 {design.category}
               </p>
             </div>
@@ -238,33 +231,21 @@ export default function WallpaperGrid({
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center space-x-2 mt-6">
+        <div className="flex items-center justify-center space-x-2 mt-6 wallpaper-pagination">
           <button
             onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
             disabled={currentPage === 0}
-            className="px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              background: currentPage === 0 ? 'var(--border-light)' : 'var(--gold)',
-              color: currentPage === 0 ? 'var(--text-muted)' : '#ffffff',
-              cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
-              opacity: currentPage === 0 ? 0.5 : 1
-            }}
+            className={`pagination-btn ${currentPage === 0 ? 'is-disabled' : ''}`}
           >
             Previous
           </button>
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <span className="text-sm pagination-status">
             Page {currentPage + 1} of {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={currentPage === totalPages - 1}
-            className="px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              background: currentPage === totalPages - 1 ? 'var(--border-light)' : 'var(--gold)',
-              color: currentPage === totalPages - 1 ? 'var(--text-muted)' : '#ffffff',
-              cursor: currentPage === totalPages - 1 ? 'not-allowed' : 'pointer',
-              opacity: currentPage === totalPages - 1 ? 0.5 : 1
-            }}
+            className={`pagination-btn ${currentPage === totalPages - 1 ? 'is-disabled' : ''}`}
           >
             Next
           </button>

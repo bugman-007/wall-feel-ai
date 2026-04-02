@@ -15,6 +15,35 @@ interface ClassificationLabels {
   feels: string[]
 }
 
+let cachedLabels: ClassificationLabels | null = null
+let labelsPromise: Promise<ClassificationLabels> | null = null
+
+async function fetchLabelsOnce(): Promise<ClassificationLabels> {
+  if (cachedLabels) {
+    return cachedLabels
+  }
+
+  if (!labelsPromise) {
+    labelsPromise = (async () => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/catalog/labels`)
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch classification labels')
+      }
+
+      const data = await response.json()
+      cachedLabels = data
+      return data
+    })()
+      .finally(() => {
+        labelsPromise = null
+      })
+  }
+
+  return labelsPromise
+}
+
 export default function StyleFeelFilter({
   selectedStyles,
   selectedFeels,
@@ -27,29 +56,46 @@ export default function StyleFeelFilter({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchLabels()
-  }, [])
+    let isActive = true
 
-  const fetchLabels = async () => {
-    try {
-      setLoading(true)
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/catalog/labels`)
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch classification labels')
-      }
-
-      const data = await response.json()
-      setLabels(data)
-      setError(null)
-    } catch (err) {
-      setError('Failed to load filters')
-      console.error('Labels fetch error:', err)
-    } finally {
+    if (cachedLabels) {
+      setLabels(cachedLabels)
       setLoading(false)
+      return () => {
+        isActive = false
+      }
     }
-  }
+
+    const loadLabels = async () => {
+      try {
+        setLoading(true)
+        const data = await fetchLabelsOnce()
+        if (!isActive) {
+          return
+        }
+
+        setLabels(data)
+        setError(null)
+      } catch (err) {
+        if (!isActive) {
+          return
+        }
+
+        setError('Failed to load filters')
+        console.error('Labels fetch error:', err)
+      } finally {
+        if (isActive) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadLabels()
+
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   const handleStyleClick = (style: string) => {
     if (style === 'Surprise me') {
@@ -83,36 +129,20 @@ export default function StyleFeelFilter({
   }
 
   return (
-    <div className="mb-8 space-y-6">
+    <div className="mb-8 space-y-6 filter-stack">
       {/* Style Filter */}
       <div>
-        <h4 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
+        <h4 className="text-sm font-semibold mb-3 filter-heading">
           Choose Your Style
         </h4>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 filter-chip-row">
           {labels.styles.map((style) => {
             const isSelected = isStyleSelected(style)
             return (
               <button
                 key={style}
                 onClick={() => handleStyleClick(style)}
-                className="px-4 py-2 text-sm font-medium transition-all"
-                style={{
-                  background: isSelected ? 'var(--gold)' : 'var(--bg-secondary)',
-                  border: '1px solid ' + (isSelected ? 'var(--gold)' : 'var(--border-light)'),
-                  color: isSelected ? 'white' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'var(--panel)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'var(--bg-secondary)'
-                  }
-                }}
+                className={`filter-chip ${isSelected ? 'is-selected' : ''}`}
               >
                 {style}
               </button>
@@ -121,22 +151,7 @@ export default function StyleFeelFilter({
           {/* Surprise Me Button */}
           <button
             onClick={onSurpriseMe}
-            className="px-4 py-2 text-sm font-medium transition-all"
-            style={{
-              background: 'linear-gradient(135deg, var(--gold), #c9a959)',
-              border: '1px solid var(--gold)',
-              color: 'white',
-              borderRadius: '4px',
-              boxShadow: '0 2px 8px rgba(200, 170, 117, 0.3)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.05)'
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(200, 170, 117, 0.4)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)'
-              e.currentTarget.style.boxShadow = '0 2px 8px rgba(200, 170, 117, 0.3)'
-            }}
+            className="filter-chip surprise-chip"
           >
             ✨ Surprise me
           </button>
@@ -145,33 +160,17 @@ export default function StyleFeelFilter({
 
       {/* Feel Filter */}
       <div>
-        <h4 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
+        <h4 className="text-sm font-semibold mb-3 filter-heading">
           How should it feel?
         </h4>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 filter-chip-row">
           {labels.feels.map((feel) => {
             const isSelected = isFeelSelected(feel)
             return (
               <button
                 key={feel}
                 onClick={() => onFeelSelect(feel)}
-                className="px-4 py-2 text-sm font-medium transition-all"
-                style={{
-                  background: isSelected ? 'var(--gold)' : 'var(--bg-secondary)',
-                  border: '1px solid ' + (isSelected ? 'var(--gold)' : 'var(--border-light)'),
-                  color: isSelected ? 'white' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'var(--panel)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'var(--bg-secondary)'
-                  }
-                }}
+                className={`filter-chip ${isSelected ? 'is-selected' : ''}`}
               >
                 {feel}
               </button>
@@ -189,8 +188,7 @@ export default function StyleFeelFilter({
               selectedStyles.forEach(s => onStyleSelect(s))
               selectedFeels.forEach(f => onFeelSelect(f))
             }}
-            className="text-sm font-medium hover:underline"
-            style={{ color: 'var(--text-muted)' }}
+            className="filter-clear"
           >
             Clear all filters &mdash; Show all designs
           </button>

@@ -1,13 +1,17 @@
 'use client'
 
-import { useCallback, useState, useEffect, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
-import CameraCapture from './CameraCapture'
 
 interface ImageUploadProps {
   onImageSelect: (file: File, preview: string, uploadedUrl?: string) => void
 }
+
+const CameraCapture = dynamic(() => import('./CameraCapture'), {
+  ssr: false,
+})
 
 export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [preview, setPreview] = useState<string | null>(null)
@@ -16,17 +20,33 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [showCamera, setShowCamera] = useState(false)
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const progressResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearProgressTimers = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = null
+    }
+
+    if (progressResetTimeoutRef.current) {
+      clearTimeout(progressResetTimeoutRef.current)
+      progressResetTimeoutRef.current = null
+    }
+  }, [])
 
   // Cleanup preview URL on unmount
   useEffect(() => {
     return () => {
+      clearProgressTimers()
       if (preview) {
         URL.revokeObjectURL(preview)
       }
     }
-  }, [preview])
+  }, [clearProgressTimers, preview])
 
   const uploadToBackend = useCallback(async (file: File, previewUrl: string) => {
+    clearProgressTimers()
     setUploading(true)
     setUploadProgress(0)
     setError(null)
@@ -38,7 +58,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
       // Simulate progress (since fetch doesn't support upload progress easily)
-      const progressInterval = setInterval(() => {
+      progressIntervalRef.current = setInterval(() => {
         setUploadProgress(prev => Math.min(prev + 10, 90))
       }, 200)
 
@@ -47,7 +67,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
         body: formData,
       })
 
-      clearInterval(progressInterval)
+      clearProgressTimers()
       setUploadProgress(100)
 
       if (!response.ok) {
@@ -64,10 +84,14 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       setError(err.message || 'Failed to upload image. Please try again.')
       console.error('Upload error:', err)
     } finally {
+      clearProgressTimers()
       setUploading(false)
-      setTimeout(() => setUploadProgress(0), 1000)
+      progressResetTimeoutRef.current = setTimeout(() => {
+        setUploadProgress(0)
+        progressResetTimeoutRef.current = null
+      }, 1000)
     }
-  }, [onImageSelect])
+  }, [clearProgressTimers, onImageSelect])
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setError(null)
@@ -106,6 +130,11 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
   const handleCameraCapture = (file: File) => {
     setFileName(file.name)
+
+    if (preview) {
+      URL.revokeObjectURL(preview)
+    }
+
     const previewUrl = URL.createObjectURL(file)
     setPreview(previewUrl)
     uploadToBackend(file, previewUrl)
@@ -124,6 +153,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   })
 
   const clearImage = () => {
+    clearProgressTimers()
     if (preview) {
       URL.revokeObjectURL(preview)
     }
@@ -134,30 +164,83 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="upload-stage w-full max-w-5xl mx-auto">
       {!preview ? (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="upload-stage-shell">
+          <div className="upload-stage-header">
+            <p className="upload-stage-brand">WALLFEEL</p>
+            <p className="upload-stage-kicker">Upload Your Vision. We Design Luxury Around It.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 upload-split">
             {/* Left Card: Upload from Gallery */}
             <div
               {...getRootProps()}
-              className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] upload-dropzone"
+              className="card upload-panel upload-dropzone upload-gallery-panel"
               style={{
                 borderStyle: isDragActive ? 'solid' : 'dashed',
-                borderColor: isDragActive ? 'var(--text-primary)' : 'var(--border-light)',
-                background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                borderColor: isDragActive ? 'var(--gold-strong)' : 'var(--border-light)',
                 opacity: uploading ? 0.5 : 1,
                 cursor: uploading ? 'not-allowed' : 'pointer',
-                position: 'relative'
               }}
             >
               <input {...getInputProps()} />
 
-              <div className="space-y-4">
+              <div className="upload-panel-frame">
+                <div className="upload-icon-row">
+                  <div className="upload-icon-pill">
+                    <svg
+                      className="w-8 h-8"
+                      style={{ color: 'var(--text-primary)' }}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                  <span className="upload-plus">+</span>
+                  <div className="upload-icon-pill upload-icon-pill-accent">
+                    <svg
+                      className="w-8 h-8"
+                      style={{ color: 'var(--gold-deep)' }}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                {isDragActive ? (
+                  <p className="upload-panel-title">Drop your image here</p>
+                ) : (
+                  <p className="upload-panel-title">Drag &amp; Drop or Click to Upload</p>
+                )}
+
+                <p className="upload-panel-copy">JPG, PNG up to 10MB</p>
+                <p className="upload-panel-footnote">Capture the full wall with good lighting for the most realistic preview.</p>
+
                 <div className="flex justify-center">
                   <svg
-                    className="w-16 h-16"
-                    style={{ color: 'var(--text-muted)' }}
+                    className="w-16 h-16 upload-panel-cloud"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -170,44 +253,37 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                     />
                   </svg>
                 </div>
-
-                {isDragActive ? (
-                  <p className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                    Drop your image here
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-                      Drag & drop your room photo
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                      or click to browse gallery
-                    </p>
-                  </>
-                )}
-
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Supports: JPEG, PNG (max 10MB)
-                </p>
               </div>
             </div>
 
             {/* Right Card: Take a Photo */}
             <div
-              className="card p-12 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+              className="card upload-panel upload-camera-panel"
               style={{
-                border: '1px solid var(--border-light)',
-                background: 'var(--bg-card)',
                 opacity: uploading ? 0.5 : 1,
                 cursor: uploading ? 'not-allowed' : 'pointer',
-                position: 'relative'
               }}
               onClick={(e) => {
                 e.stopPropagation()
                 setShowCamera(true)
               }}
             >
-              <div className="space-y-4">
+              <div className="upload-camera-header">
+                <p className="upload-side-title">Capture Room Photo</p>
+                <p className="upload-side-copy">Use your camera to create a clean front-facing room image without leaving the flow.</p>
+              </div>
+
+              <div className="upload-best-list">
+                <div className="upload-best-list-title">How to Get the Best Result</div>
+                <ul>
+                  <li>Use a high-resolution room photo</li>
+                  <li>Capture the full wall perspective</li>
+                  <li>Avoid glare and harsh backlight</li>
+                  <li>Keep the camera steady and level</li>
+                </ul>
+              </div>
+
+              <div className="upload-camera-actions">
                 <div className="flex justify-center">
                   <svg
                     className="w-16 h-16"
@@ -231,18 +307,9 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                   </svg>
                 </div>
 
-                <div>
-                  <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-                    Take a Photo
-                  </p>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Use your camera to capture room
-                  </p>
-                </div>
-
                 <button
                   type="button"
-                  className="gold-btn"
+                  className="gold-btn upload-camera-btn"
                   disabled={uploading}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -262,10 +329,15 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               onClose={() => setShowCamera(false)}
             />
           )}
-        </>
+        </div>
       ) : (
-        <div className="space-y-4">
-          <div className="relative rounded-lg overflow-hidden card" style={{ background: 'var(--bg-secondary)' }}>
+        <div className="upload-stage-shell upload-preview-shell">
+          <div className="upload-stage-header">
+            <p className="upload-stage-brand">WALLFEEL</p>
+            <p className="upload-stage-kicker">Your room is ready for luxury design review.</p>
+          </div>
+
+          <div className="preview-stage-frame">
             <Image
               src={preview}
               alt="Uploaded room"
@@ -273,28 +345,20 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               height={800}
               className="w-full h-auto"
               unoptimized
-              onLoad={(e) => {
-                const target = e.target as HTMLImageElement;
-                const container = target.parentElement;
-                if (container) {
-                  container.style.minHeight = 'auto';
-                  container.style.height = 'auto';
-                }
-              }}
             />
 
             {/* Upload overlay */}
             {uploading && (
-              <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
+              <div className="absolute inset-0 flex items-center justify-center upload-preview-overlay">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 mx-auto mb-4" style={{ border: '3px solid rgba(255,255,255,0.3)', borderTopColor: 'var(--text-primary)' }}></div>
+                  <div className="animate-spin rounded-full h-12 w-12 mx-auto mb-4 upload-spinner"></div>
                   <p className="text-white font-medium">Uploading... {uploadProgress}%</p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between p-4 card">
+          <div className="preview-meta-bar">
             <div className="flex items-center space-x-3">
               {uploading ? (
                 <svg className="animate-spin h-5 w-5" style={{ color: 'var(--text-primary)' }} fill="none" viewBox="0 0 24 24">
@@ -308,7 +372,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                   </svg>
                 </div>
               )}
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+              <span className="text-sm font-medium preview-file-name">
                 {fileName}
               </span>
             </div>
@@ -316,13 +380,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
             <button
               onClick={clearImage}
               disabled={uploading}
-              className="text-sm font-medium transition-colors"
-              style={{
-                color: uploading ? 'var(--text-muted)' : '#ef4444',
-                cursor: uploading ? 'not-allowed' : 'pointer'
-              }}
-              onMouseEnter={(e) => { if (!uploading) e.currentTarget.style.opacity = '0.7' }}
-              onMouseLeave={(e) => { if (!uploading) e.currentTarget.style.opacity = '1' }}
+              className={`preview-remove-btn ${uploading ? 'is-disabled' : ''}`}
             >
               Remove
             </button>
@@ -330,10 +388,10 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
 
           {/* Progress bar */}
           {uploading && uploadProgress > 0 && (
-            <div className="w-full rounded-full h-2" style={{ background: 'var(--bg-tertiary)' }}>
+            <div className="luxury-progress-rail">
               <div
-                className="h-2 rounded-full transition-all duration-300"
-                style={{ background: 'var(--text-primary)', width: `${uploadProgress}%` }}
+                className="luxury-progress-fill"
+                style={{ width: `${uploadProgress}%` }}
               ></div>
             </div>
           )}
@@ -341,7 +399,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       )}
 
       {error && (
-        <div className="mt-4 p-4 rounded-xl border" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }}>
+        <div className="status-card status-card-error mt-4">
           <div className="flex items-center space-x-2">
             <svg className="w-5 h-5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

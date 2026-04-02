@@ -21,23 +21,17 @@ interface QualitySelectorProps {
 
 export default function QualitySelector({ selectedId, onSelect }: QualitySelectorProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 quality-grid">
       {QUALITY_OPTIONS.map((option) => (
-        <div
+        <button
           key={option.id}
+          type="button"
           onClick={() => onSelect(option.id)}
-          className="card cursor-pointer transition-all duration-300 hover:shadow-md"
-          style={{
-            border: selectedId === option.id ? '2px solid var(--gold)' : '1px solid var(--border-light)',
-            boxShadow: selectedId === option.id ? '0 4px 12px rgba(200, 170, 117, 0.4)' : 'var(--shadow-sm)',
-            padding: '16px',
-            textAlign: 'center',
-            position: 'relative'
-          }}
+          className={`card quality-card ${selectedId === option.id ? 'is-selected' : ''}`}
         >
           {/* Selection Indicator - black check in circle */}
           {selectedId === option.id && (
-            <div className="absolute top-2 right-2 rounded-full p-1 shadow-lg" style={{ background: '#1a1a1a' }}>
+            <div className="quality-card-check">
               <svg className="w-3 h-3" style={{ color: '#ffffff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
               </svg>
@@ -45,20 +39,20 @@ export default function QualitySelector({ selectedId, onSelect }: QualitySelecto
           )}
 
           {/* Quality Name */}
-          <div className="text-lg font-semibold mb-1" style={{ color: selectedId === option.id ? 'var(--gold)' : 'var(--text-primary)' }}>
+          <div className="text-lg font-semibold mb-1 quality-card-title">
             {option.name}
           </div>
 
           {/* Resolution */}
-          <div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-xs mb-2 quality-card-meta">
             {option.resolution}
           </div>
 
           {/* Estimated Time */}
-          <div className="text-xs font-medium px-2 py-1 rounded-full inline-block" style={{ background: selectedId === option.id ? 'var(--gold)' : 'var(--bg-secondary)', color: selectedId === option.id ? '#ffffff' : 'var(--text-secondary)' }}>
+          <div className="text-xs font-medium px-2 py-1 rounded-full inline-block quality-card-badge">
             {option.estimatedTime}
           </div>
-        </div>
+        </button>
       ))}
     </div>
   )

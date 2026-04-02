@@ -94,10 +94,10 @@ export default function PreviewDisplay({
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto">
+    <div className="w-full max-w-6xl mx-auto preview-display-shell">
       {/* Comparison Container */}
       <div
-        className="comparison-container relative rounded-lg overflow-hidden cursor-col-resize select-none card"
+        className="comparison-container relative rounded-lg overflow-hidden cursor-col-resize select-none card preview-comparison"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -146,22 +146,17 @@ export default function PreviewDisplay({
           className="absolute top-0 bottom-0 w-1.5 shadow-xl cursor-col-resize"
           style={{
             left: `${sliderPosition}%`,
-            background: '#c8aa75',
-            boxShadow: '0 0 10px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.3)'
+            background: 'var(--gold-strong)',
+            boxShadow: '0 0 18px rgba(0,0,0,0.22), 0 0 0 2px rgba(255,255,255,0.25)'
           }}
         >
           {/* Slider Handle */}
           <div
-            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full shadow-xl flex items-center justify-center"
-            style={{
-              background: '#c8aa75',
-              border: '3px solid rgba(255,255,255,0.8)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-            }}
+            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full shadow-xl flex items-center justify-center comparison-handle"
           >
             <svg
               className="w-5 h-5"
-              style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+              style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.35))' }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -177,16 +172,16 @@ export default function PreviewDisplay({
         </div>
 
         {/* Labels */}
-        <div className="absolute top-4 left-4 px-3 py-1 rounded text-sm font-medium" style={{ background: 'rgba(0,0,0,0.7)', color: 'white' }}>
+        <div className="absolute top-4 left-4 px-3 py-1 rounded text-sm font-medium compare-badge compare-badge-after">
           After
         </div>
-        <div className="absolute top-4 right-4 px-3 py-1 rounded text-sm font-medium" style={{ background: 'rgba(0,0,0,0.7)', color: 'white' }}>
+        <div className="absolute top-4 right-4 px-3 py-1 rounded text-sm font-medium compare-badge compare-badge-before">
           Before
         </div>
       </div>
 
       {/* Instructions */}
-      <div className="mt-4 p-4 rounded-xl card">
+      <div className="mt-4 p-4 rounded-xl card instruction-card">
         <div className="flex items-start space-x-3">
           <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -203,7 +198,7 @@ export default function PreviewDisplay({
       </div>
 
       {/* Action Buttons */}
-      <div className="mt-6 flex justify-center space-x-4">
+      <div className="mt-6 flex justify-center space-x-4 preview-actions">
         {onClose && (
           <button
             onClick={onClose}

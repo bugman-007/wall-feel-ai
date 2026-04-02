@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import Image from 'next/image'
+import dynamic from 'next/dynamic'
 import ImageUpload from './components/ImageUpload'
-import WallpaperGrid from './components/WallpaperGrid'
-import PreviewDisplay from './components/PreviewDisplay'
-import QualitySelector from './components/QualitySelector'
-import StyleFeelFilter from './components/StyleFeelFilter'
-import CreateCustomDesign from './components/CreateCustomDesign'
+import {
+  POST_PREVIEW_MATERIALS,
+  SQFT_PER_SQM,
+  type MeasurementUnit,
+  type PostPreviewMaterialId,
+} from './components/postPreviewMaterials'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 interface WallpaperDesign {
@@ -27,14 +28,49 @@ const features = [
 ]
 
 const steps = ['Upload Your Space', 'Choose Style & Material or Create Your Own', 'AI Generates Preview', 'Order Your Design']
-const partnerTypes = ['Restaurants', 'Hotels', 'Offices', 'Real Estate', 'Staging']
 
-const galleryImages = [
-  'https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1600210492486-724fe5c67fb3?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1616594039964-3f5c3eec0b3b?auto=format&fit=crop&w=800&q=80',
-]
+const formatPrice = (value: number) =>
+  new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+
+function DeferredSectionFallback() {
+  return (
+    <div className="flex justify-center items-center py-12">
+      <div
+        className="animate-spin rounded-full h-12 w-12"
+        style={{ border: '3px solid var(--border-light)', borderTopColor: 'var(--text-primary)' }}
+      />
+    </div>
+  )
+}
+
+const WallpaperGrid = dynamic(() => import('./components/WallpaperGrid'), {
+  loading: DeferredSectionFallback,
+})
+
+const PreviewDisplay = dynamic(() => import('./components/PreviewDisplay'), {
+  loading: DeferredSectionFallback,
+})
+
+const PostPreviewMaterialSelection = dynamic(() => import('./components/PostPreviewMaterialSelection'), {
+  loading: DeferredSectionFallback,
+})
+
+const QualitySelector = dynamic(() => import('./components/QualitySelector'), {
+  loading: DeferredSectionFallback,
+})
+
+const StyleFeelFilter = dynamic(() => import('./components/StyleFeelFilter'), {
+  loading: DeferredSectionFallback,
+})
+
+const CreateCustomDesign = dynamic(() => import('./components/CreateCustomDesign'), {
+  loading: DeferredSectionFallback,
+})
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<{
@@ -54,6 +90,11 @@ export default function Home() {
   const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [customGenerateError, setCustomGenerateError] = useState<string | null>(null)
+  const [selectedMaterialId, setSelectedMaterialId] = useState<PostPreviewMaterialId | null>(null)
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('metric')
+  const [wallWidth, setWallWidth] = useState('')
+  const [wallHeight, setWallHeight] = useState('')
+  const [cartNotice, setCartNotice] = useState<string | null>(null)
   // Catalog pre-fetch state
   const [catalogData, setCatalogData] = useState<WallpaperDesign[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
@@ -66,6 +107,14 @@ export default function Home() {
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
+  }
+
+  const resetPostPreviewPurchase = () => {
+    setSelectedMaterialId(null)
+    setMeasurementUnit('metric')
+    setWallWidth('')
+    setWallHeight('')
+    setCartNotice(null)
   }
 
   const handleStyleSelect = (style: string) => {
@@ -102,6 +151,29 @@ export default function Home() {
 
     // Scroll to wallpaper grid
     document.getElementById('wallpaper-grid')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const handleMaterialSelect = (materialId: PostPreviewMaterialId) => {
+    setSelectedMaterialId(materialId)
+    setCartNotice(null)
+  }
+
+  const handleMeasurementUnitChange = (unit: MeasurementUnit) => {
+    if (unit === measurementUnit) return
+    setMeasurementUnit(unit)
+    setWallWidth('')
+    setWallHeight('')
+    setCartNotice(null)
+  }
+
+  const handleWallWidthChange = (value: string) => {
+    setWallWidth(value)
+    setCartNotice(null)
+  }
+
+  const handleWallHeightChange = (value: string) => {
+    setWallHeight(value)
+    setCartNotice(null)
   }
 
   // Poll job status until completion or failure
@@ -153,6 +225,18 @@ export default function Home() {
       activeCatalogRequest?.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (previewUrl) {
+      resetPostPreviewPurchase()
+    }
+  }, [previewUrl])
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
+    }
+  }, [isDarkMode])
 
   // Refetch catalog when filters change (only after initial load)
   useEffect(() => {
@@ -299,15 +383,42 @@ export default function Home() {
     })
   }
 
-  // Apply theme to document
-  if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
+  const selectedMaterial = POST_PREVIEW_MATERIALS.find((material) => material.id === selectedMaterialId) || null
+  const parsedWidth = Number(wallWidth)
+  const parsedHeight = Number(wallHeight)
+  const hasValidDimensions =
+    Number.isFinite(parsedWidth) &&
+    Number.isFinite(parsedHeight) &&
+    parsedWidth > 0 &&
+    parsedHeight > 0
+
+  const areaDisplay = hasValidDimensions ? parsedWidth * parsedHeight : null
+  const areaDisplayUnit = measurementUnit === 'metric' ? 'sqm' : 'sqft'
+  const areaSqm = areaDisplay === null
+    ? null
+    : measurementUnit === 'metric'
+      ? areaDisplay
+      : areaDisplay / SQFT_PER_SQM
+  const totalPrice = selectedMaterial && areaSqm !== null
+    ? areaSqm * selectedMaterial.ratePerSqm
+    : null
+  const isAddToCartEnabled = Boolean(selectedMaterial && areaSqm !== null && areaSqm > 0)
+
+  const handleAddToCart = () => {
+    if (!isAddToCartEnabled || !selectedMaterial || totalPrice === null) {
+      return
+    }
+
+    setCartNotice(
+      `Cart integration coming soon. ${selectedMaterial.name} is estimated at ${formatPrice(totalPrice)} for this wall.`
+    )
   }
 
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
     setGenerateError(null)
     setCustomGenerateError(null)
+    resetPostPreviewPurchase()
     setPreviewUrl(null)
     // Pre-fetch catalog during upload for better UX
     fetchCatalog({ styles: selectedStyles, feels: selectedFeels })
@@ -478,25 +589,6 @@ export default function Home() {
           onClick={toggleTheme}
           className="theme-toggle"
           aria-label="Toggle dark mode"
-          style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            zIndex: 100,
-            background: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '50%',
-            width: '44px',
-            height: '44px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
         >
           {isDarkMode ? (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
@@ -520,7 +612,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="content-shell">
+      <section className="content-shell features-shell">
         <h2 className="section-title">Our Key Features</h2>
         <div className="feature-grid">
           {features.map((item) => (
@@ -532,7 +624,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="content-shell">
+      <section className="content-shell process-shell">
         <h2 className="section-title">How It Works</h2>
         <div className="steps-row">
           {steps.map((step, index) => (
@@ -545,10 +637,10 @@ export default function Home() {
       </section>
 
       {/* AI Wallpaper Preview Generator - Integrated Section */}
-      <section className="content-shell" id="visualizer" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '64px' }}>
+      <section className="content-shell visualizer-shell" id="visualizer">
         <h2 className="section-title">Visualize Your Space</h2>
-        <p className="text-center" style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 32px' }}>
-          Upload your room photo and explore how our premium wallpapers transform your space instantly.
+        <p className="section-subtitle">
+          Upload your room photo and refine a premium wall concept with a calmer, more editorial design review flow.
         </p>
 
         {/* Step 1: Upload - Always shown first */}
@@ -564,24 +656,16 @@ export default function Home() {
           <>
             {/* Tab Navigation */}
             <ErrorBoundary>
-              <div className="flex border-b mt-8" style={{ borderColor: 'var(--border-light)' }}>
+              <div className="luxury-tabs">
                 <button
                   onClick={() => setActiveTab('browse')}
-                  className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'browse' ? 'border-gold' : 'border-transparent'}`}
-                  style={{
-                    background: activeTab === 'browse' ? 'var(--bg-secondary)' : 'transparent',
-                    color: activeTab === 'browse' ? 'var(--gold)' : 'var(--text-secondary)',
-                  }}
+                  className={`luxury-tab ${activeTab === 'browse' ? 'is-active' : ''}`}
                 >
                   Browse Catalog
                 </button>
                 <button
                   onClick={() => setActiveTab('create')}
-                  className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 -mb-px ${activeTab === 'create' ? 'border-gold' : 'border-transparent'}`}
-                  style={{
-                    background: activeTab === 'create' ? 'var(--bg-secondary)' : 'transparent',
-                    color: activeTab === 'create' ? 'var(--gold)' : 'var(--text-secondary)',
-                  }}
+                  className={`luxury-tab ${activeTab === 'create' ? 'is-active' : ''}`}
                 >
                   Create Your Own
                 </button>
@@ -640,7 +724,7 @@ export default function Home() {
                   {selectedWallpaper && !previewUrl && (
                     <div className="step-section">
                       <h3 className="step-title">5. Generate Preview</h3>
-                      <div className="card" style={{ maxWidth: '600px', margin: '0 auto', padding: '32px', textAlign: 'center' }}>
+                      <div className="card review-action-card">
                         <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                           AI will automatically detect walls and apply the wallpaper
                         </p>
@@ -694,7 +778,7 @@ export default function Home() {
 
         {/* Error Message */}
         {generateError && (
-          <div className="card" style={{ maxWidth: '600px', margin: '24px auto', borderColor: '#ef4444', padding: '20px', background: 'rgba(239, 68, 68, 0.05)' }}>
+          <div className="card status-card status-card-error">
             <div className="flex items-start space-x-3">
               <svg className="w-6 h-6 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -721,13 +805,33 @@ export default function Home() {
         {/* Preview Display */}
         {previewUrl && selectedImage?.preview && (
           <ErrorBoundary>
-            <div className="step-section">
+            <div className="step-section preview-stage">
               <h3 className="step-title" style={{ textAlign: 'center' }}>Your Preview</h3>
               <PreviewDisplay
                 originalUrl={selectedImage.preview}
                 previewUrl={previewUrl}
-                onClose={() => setPreviewUrl(null)}
+                onClose={() => {
+                  setPreviewUrl(null)
+                  resetPostPreviewPurchase()
+                }}
                 quality={selectedQuality}
+              />
+              <PostPreviewMaterialSelection
+                previewImageUrl={previewUrl}
+                selectedMaterialId={selectedMaterialId}
+                onSelectMaterial={handleMaterialSelect}
+                measurementUnit={measurementUnit}
+                onMeasurementUnitChange={handleMeasurementUnitChange}
+                wallWidth={wallWidth}
+                wallHeight={wallHeight}
+                onWallWidthChange={handleWallWidthChange}
+                onWallHeightChange={handleWallHeightChange}
+                areaDisplay={areaDisplay}
+                areaDisplayUnit={areaDisplayUnit}
+                areaSqm={areaSqm}
+                totalPrice={totalPrice}
+                cartNotice={cartNotice}
+                onAddToCart={handleAddToCart}
               />
             </div>
           </ErrorBoundary>
@@ -762,7 +866,7 @@ export default function Home() {
         </div>
       </section> */}
 
-      <section className="content-shell cta-shell">
+      <section className="content-shell cta-shell luxury-cta-shell">
         <h2 className="section-title">Ready to Redefine Your Space?</h2>
         <div className="hero-actions">
           <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>Start Your Design</button>

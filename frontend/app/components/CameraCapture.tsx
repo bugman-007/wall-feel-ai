@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useRef, useCallback, useEffect } from 'react'
 
 interface CameraCaptureProps {
@@ -13,6 +14,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [capturedImageDimensions, setCapturedImageDimensions] = useState<{ width: number; height: number } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [facingMode, setFacingMode] = useState<FacingMode>('environment')
   const [torchOn, setTorcon] = useState(false)
@@ -160,6 +162,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
             const file = new File([blob], `camera-capture-${Date.now()}.jpg`, {
               type: 'image/jpeg',
             })
+            setCapturedImageDimensions({
+              width: canvas.width,
+              height: canvas.height,
+            })
             setCapturedImage(canvas.toDataURL('image/jpeg'))
             onCapture(file)
             stopCamera()
@@ -170,12 +176,15 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
   }, [onCapture, stopCamera])
 
   const handleClose = useCallback(() => {
+    setCapturedImage(null)
+    setCapturedImageDimensions(null)
     stopCamera()
     onClose()
   }, [stopCamera, onClose])
 
   const handleRetake = useCallback(() => {
     setCapturedImage(null)
+    setCapturedImageDimensions(null)
     startCamera(facingMode)
   }, [facingMode, startCamera])
 
@@ -281,7 +290,16 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
             </>
           ) : (
             <div className="captured-preview">
-              <img src={capturedImage} alt="Captured" />
+              {capturedImage && (
+                <Image
+                  src={capturedImage}
+                  alt="Captured"
+                  width={capturedImageDimensions?.width || 1200}
+                  height={capturedImageDimensions?.height || 900}
+                  className="captured-preview-image"
+                  unoptimized
+                />
+              )}
               <div className="camera-controls">
                 <button onClick={handleRetake} className="camera-retake-btn">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,7 +322,8 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.9);
+          background: linear-gradient(180deg, rgba(11, 10, 9, 0.86), rgba(11, 10, 9, 0.92));
+          backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -313,8 +332,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-capture-modal {
-          background: var(--panel, #1a1a1a);
-          border-radius: 16px;
+          background: linear-gradient(180deg, rgba(25, 22, 20, 0.98), rgba(14, 12, 11, 0.98));
+          border-radius: 22px;
+          border: 1px solid rgba(122, 99, 70, 0.55);
+          box-shadow: 0 28px 72px rgba(0, 0, 0, 0.55);
           max-width: 600px;
           width: 100%;
           max-height: 90vh;
@@ -327,22 +348,24 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 16px 20px;
-          border-bottom: 1px solid var(--line, #333);
+          padding: 18px 22px;
+          border-bottom: 1px solid rgba(116, 96, 70, 0.45);
           flex-shrink: 0;
         }
 
         .camera-header h3 {
-          color: var(--text, #fff);
-          font-size: 1.1rem;
-          font-weight: 600;
+          color: #f2e9da;
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 1.35rem;
+          font-weight: 500;
+          letter-spacing: 0.04em;
           margin: 0;
         }
 
         .camera-close-btn {
-          background: none;
-          border: none;
-          color: var(--text, #fff);
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(132, 109, 78, 0.42);
+          color: #f2e9da;
           cursor: pointer;
           padding: 8px;
           display: flex;
@@ -353,11 +376,11 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-close-btn:hover {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.08);
         }
 
         .camera-content {
-          padding: 20px;
+          padding: 24px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -370,8 +393,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           flex: 1;
           min-height: 300px;
           max-height: 60vh;
-          background: #000;
-          border-radius: 12px;
+          background: linear-gradient(180deg, #11100f, #070706);
+          border-radius: 18px;
+          border: 1px solid rgba(118, 95, 68, 0.46);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
           overflow: hidden;
           position: relative;
           display: flex;
@@ -396,14 +421,14 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           flex-direction: column;
           align-items: center;
           gap: 16px;
-          color: #fff;
+          color: #f3e6d2;
         }
 
         .loading-spinner {
           width: 48px;
           height: 48px;
-          border: 4px solid rgba(255, 255, 255, 0.3);
-          border-top-color: #fff;
+          border: 4px solid rgba(255, 255, 255, 0.12);
+          border-top-color: #ddb57e;
           border-radius: 50%;
           animation: spin 1s linear infinite;
         }
@@ -411,7 +436,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         .camera-loading p {
           font-size: 0.9rem;
           margin: 0;
-          color: rgba(255, 255, 255, 0.8);
+          color: rgba(242, 233, 218, 0.84);
         }
 
         .camera-prompt {
@@ -419,7 +444,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           flex-direction: column;
           align-items: center;
           gap: 12px;
-          color: #888;
+          color: rgba(240, 223, 199, 0.7);
           cursor: pointer;
           transition: opacity 0.2s;
         }
@@ -452,9 +477,9 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         .retry-btn {
           margin-top: 12px;
           padding: 10px 20px;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          color: #fff;
+          background: linear-gradient(180deg, rgba(47, 40, 33, 0.96), rgba(20, 18, 17, 0.98));
+          border: 1px solid rgba(222, 184, 130, 0.24);
+          color: #f2e9da;
           border-radius: 8px;
           cursor: pointer;
           font-size: 0.9rem;
@@ -462,7 +487,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .retry-btn:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: linear-gradient(180deg, rgba(58, 49, 40, 0.96), rgba(25, 22, 20, 0.98));
         }
 
         /* Shutter flash effect */
@@ -501,9 +526,9 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
 
         .camera-top-controls .control-btn {
           pointer-events: auto;
-          background: rgba(0, 0, 0, 0.5);
-          border: 2px solid rgba(255, 255, 255, 0.5);
-          color: #fff;
+          background: rgba(12, 11, 10, 0.56);
+          border: 1px solid rgba(226, 186, 131, 0.26);
+          color: #f2e9da;
           padding: 12px;
           border-radius: 50%;
           cursor: pointer;
@@ -517,13 +542,13 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-top-controls .control-btn:hover {
-          background: rgba(0, 0, 0, 0.7);
-          border-color: #fff;
+          background: rgba(26, 23, 21, 0.86);
+          border-color: rgba(226, 186, 131, 0.4);
         }
 
         .camera-top-controls .control-btn.active {
-          background: rgba(255, 255, 255, 0.3);
-          border-color: #fff;
+          background: rgba(221, 181, 126, 0.18);
+          border-color: rgba(226, 186, 131, 0.48);
         }
 
         /* Bottom capture button */
@@ -536,8 +561,8 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-capture-btn {
-          background: rgba(255, 255, 255, 0.15);
-          border: 4px solid #fff;
+          background: rgba(20, 18, 17, 0.92);
+          border: 3px solid rgba(230, 214, 191, 0.86);
           border-radius: 50%;
           width: 80px;
           height: 80px;
@@ -546,27 +571,28 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           justify-content: center;
           cursor: pointer;
           transition: all 0.15s;
+          box-shadow: 0 18px 34px rgba(0, 0, 0, 0.4);
           backdrop-filter: blur(4px);
           flex-shrink: 0;
         }
 
         .camera-capture-btn:active {
           transform: scale(0.95);
-          background: rgba(255, 255, 255, 0.25);
+          background: rgba(35, 31, 28, 0.96);
         }
 
         .capture-circle {
           width: 60px;
           height: 60px;
           border-radius: 50%;
-          background: #fff;
+          background: linear-gradient(180deg, #fff9ef, #e4c997);
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .camera-retake-btn {
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
-          color: #fff;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(118, 95, 68, 0.46);
+          color: #f2e9da;
           padding: 12px 24px;
           border-radius: 8px;
           display: flex;
@@ -578,7 +604,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         }
 
         .camera-retake-btn:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.1);
         }
 
         .captured-preview {
@@ -589,10 +615,13 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
           gap: 20px;
         }
 
-        .captured-preview img {
+        .captured-preview-image {
           max-width: 100%;
+          height: auto;
           max-height: 60vh;
-          border-radius: 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(118, 95, 68, 0.46);
+          box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
           object-fit: contain;
         }
 
