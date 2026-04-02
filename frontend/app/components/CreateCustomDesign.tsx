@@ -8,6 +8,8 @@ interface CreateCustomDesignProps {
   onApplyWallpaper: (wallpaperUrl: string) => Promise<{ success: boolean; previewUrl?: string; error?: string }>
   isGenerating: boolean
   jobStatus?: 'queued' | 'processing' | 'completed' | 'failed' | null
+  generationError?: string | null
+  onClearGenerationError: () => void
 }
 
 const STYLE_INSPIRATIONS = [
@@ -21,7 +23,9 @@ export default function CreateCustomDesign({
   onGenerateWallpaper,
   onApplyWallpaper,
   isGenerating,
-  jobStatus
+  jobStatus,
+  generationError,
+  onClearGenerationError
 }: CreateCustomDesignProps) {
   const [prompt, setPrompt] = useState('')
   const [selectedStyleInspirations, setSelectedStyleInspirations] = useState<string[]>([])
@@ -30,6 +34,7 @@ export default function CreateCustomDesign({
   const [applyError, setApplyError] = useState<string | null>(null)
 
   const handleStyleInspirationClick = (name: string) => {
+    onClearGenerationError()
     setSelectedStyleInspirations(prev =>
       prev.includes(name)
         ? prev.filter(s => s !== name)
@@ -42,6 +47,7 @@ export default function CreateCustomDesign({
       return
     }
 
+    onClearGenerationError()
     const result = await onGenerateWallpaper(prompt, selectedStyleInspirations)
     if (result.success && result.wallpaperUrl) {
       setGeneratedWallpaper(result.wallpaperUrl)
@@ -68,6 +74,7 @@ export default function CreateCustomDesign({
   const handleRegenerateClick = () => {
     setGeneratedWallpaper(null)
     setApplyError(null)
+    onClearGenerationError()
   }
 
   return (
@@ -82,7 +89,10 @@ export default function CreateCustomDesign({
             </label>
             <textarea
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                onClearGenerationError()
+                setPrompt(e.target.value)
+              }}
               placeholder="Luxurious warm and elegant wallpaper with subtle texture..."
               rows={3}
               className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-[var(--gold)] transition-all"
@@ -180,6 +190,12 @@ export default function CreateCustomDesign({
                 {jobStatus === 'queued' && 'AI service is busy right now. Retrying automatically...'}
                 {jobStatus === 'processing' && 'Creating your custom wallpaper...'}
               </p>
+            </div>
+          )}
+
+          {generationError && (
+            <div className="p-4 rounded-lg text-center max-w-md" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--text-secondary)' }}>
+              <p className="text-sm">{generationError}</p>
             </div>
           )}
         </>

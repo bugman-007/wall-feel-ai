@@ -17,22 +17,38 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
   const [facingMode, setFacingMode] = useState<FacingMode>('environment')
   const [torchOn, setTorcon] = useState(false)
   const [showShutter, setShowShutter] = useState(false)
+  const streamRef = useRef<MediaStream | null>(null)
+  const facingModeRef = useRef<FacingMode>('environment')
+  const cameraRequestRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const stopStream = useCallback((currentStream: MediaStream | null) => {
+  const stopStream = useCallback((currentStream: MediaStream | null = streamRef.current) => {
     if (currentStream) {
       currentStream.getTracks().forEach(track => track.stop())
     }
+
+    if (videoRef.current && videoRef.current.srcObject === currentStream) {
+      videoRef.current.srcObject = null
+    }
+
+    if (streamRef.current === currentStream) {
+      streamRef.current = null
+    }
   }, [])
 
-  const startCamera = useCallback(async (mode: FacingMode = facingMode) => {
+  const startCamera = useCallback(async (mode: FacingMode = facingModeRef.current) => {
+    const requestId = ++cameraRequestRef.current
+
     setIsLoading(true)
     setError(null)
+    setTorcon(false)
+    facingModeRef.current = mode
 
     try {
       // Stop existing stream
-      stopStream(stream)
+      stopStream()
+      setStream(null)
 
       const constraints: MediaStreamConstraints = {
         video: {
@@ -43,6 +59,12 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
       }
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
+      if (cameraRequestRef.current !== requestId) {
+        stopStream(mediaStream)
+        return
+      }
+
+      streamRef.current = mediaStream
       setStream(mediaStream)
       setFacingMode(mode)
 
@@ -52,6 +74,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
 
       setIsLoading(false)
     } catch (err: any) {
+      if (cameraRequestRef.current !== requestId) {
+        return
+      }
+
       setIsLoading(false)
       setError(err.name === 'NotAllowedError'
         ? 'Camera access denied. Please allow camera permissions in your browser settings.'
@@ -64,15 +90,16 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
         : 'Unable to access camera. Please make sure a camera is connected.')
       console.error('Camera error:', err)
     }
-  }, [facingMode, stream, stopStream])
+  }, [stopStream])
 
   // Auto-start camera on mount
   useEffect(() => {
     startCamera('environment')
     return () => {
-      stopStream(stream)
+      cameraRequestRef.current += 1
+      stopStream()
     }
-  }, [])
+  }, [startCamera, stopStream])
 
   const toggleTorch = useCallback(() => {
     if (stream) {
@@ -100,10 +127,12 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
   }, [facingMode, startCamera])
 
   const stopCamera = useCallback(() => {
-    stopStream(stream)
+    cameraRequestRef.current += 1
+    stopStream()
     setStream(null)
+    setTorcon(false)
     setIsLoading(false)
-  }, [stream, stopStream])
+  }, [stopStream])
 
   const capturePhoto = useCallback(() => {
     if (videoRef.current && canvasRef.current) {

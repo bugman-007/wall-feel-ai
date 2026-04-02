@@ -1240,40 +1240,43 @@ async def _process_job(job_id: str):
         logger.error(f"Job {job_id} not found for processing")
         return
 
+    concurrency = queue.get_concurrency_limiter()
+    slot_acquired = False
+
     try:
-        # Update status to processing
+        # Wait in queued status until a slot is available.
+        await concurrency.acquire(job.type)
+        slot_acquired = True
+
+        # Only mark the job as processing once it can actually start work.
         queue.update_job_status(job_id, JobStatus.PROCESSING)
+        logger.info(f"Job {job_id} acquired concurrency slot, starting generation")
 
-        # Acquire concurrency slot
-        concurrency = queue.get_concurrency_limiter()
-        async with concurrency.acquire(job.type):
-            logger.info(f"Job {job_id} acquired concurrency slot, starting generation")
+        if job.type == JobType.ROOM_PREVIEW:
+            result = await _process_room_preview_job(job)
+        else:  # WALLPAPER_TEXTURE
+            result = await _process_texture_job(job)
 
-            if job.type == JobType.ROOM_PREVIEW:
-                result = await _process_room_preview_job(job)
-            else:  # WALLPAPER_TEXTURE
-                result = await _process_texture_job(job)
+        # Handle result
+        if result and result.get("success"):
+            queue.update_job_status(
+                job_id,
+                JobStatus.COMPLETED,
+                result=result
+            )
+            logger.info(f"Job {job_id} completed successfully")
+        else:
+            # Generation failed
+            error_msg = result.get("user_message", "AI preview generation failed") if result else "AI preview generation failed"
+            raw_error = result.get("error", "Unknown error") if result else "Unknown error"
 
-            # Handle result
-            if result and result.get("success"):
-                queue.update_job_status(
-                    job_id,
-                    JobStatus.COMPLETED,
-                    result=result
-                )
-                logger.info(f"Job {job_id} completed successfully")
-            else:
-                # Generation failed
-                error_msg = result.get("user_message", "AI preview generation failed") if result else "AI preview generation failed"
-                raw_error = result.get("error", "Unknown error") if result else "Unknown error"
-
-                queue.update_job_status(
-                    job_id,
-                    JobStatus.FAILED,
-                    error_message=error_msg,
-                    raw_error=raw_error
-                )
-                logger.warning(f"Job {job_id} failed: {error_msg}")
+            queue.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=error_msg,
+                raw_error=raw_error
+            )
+            logger.warning(f"Job {job_id} failed: {error_msg}")
 
     except Exception as e:
         logger.error(f"Job {job_id} processing error: {e}", exc_info=True)
@@ -1291,6 +1294,9 @@ async def _process_job(job_id: str):
             error_message=error_msg,
             raw_error=error_str
         )
+    finally:
+        if slot_acquired:
+            concurrency.release(job.type)
 
 
 async def _process_room_preview_job(job) -> Optional[Dict[str, Any]]:

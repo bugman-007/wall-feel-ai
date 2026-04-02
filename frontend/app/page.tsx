@@ -52,12 +52,8 @@ export default function Home() {
   const [selectedFeels, setSelectedFeels] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'browse' | 'create'>('browse')
   const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
-  const [generatedWallpaperUrl, setGeneratedWallpaperUrl] = useState<string | null>(null)
-  // Job state for job-based flow
-  const [wallpaperJobId, setWallpaperJobId] = useState<string | null>(null)
-  const [previewJobId, setPreviewJobId] = useState<string | null>(null)
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
-  const [jobError, setJobError] = useState<string | null>(null)
+  const [customGenerateError, setCustomGenerateError] = useState<string | null>(null)
   // Catalog pre-fetch state
   const [catalogData, setCatalogData] = useState<WallpaperDesign[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
@@ -65,6 +61,8 @@ export default function Home() {
 
   // Refs for cleanup
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const catalogAbortRef = useRef<AbortController | null>(null)
+  const lastCatalogRequestKeyRef = useRef<string | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -150,15 +148,18 @@ export default function Home() {
   useEffect(() => {
     return () => {
       cleanupPolling()
+      const activeCatalogRequest = catalogAbortRef.current
+      catalogAbortRef.current = null
+      activeCatalogRequest?.abort()
     }
   }, [])
 
   // Refetch catalog when filters change (only after initial load)
   useEffect(() => {
-    if (catalogData.length > 0 || catalogLoading) {
-      // Only refetch if we already have data or are loading (meaning user changed filters)
+    if (selectedImage?.uploadedUrl && (catalogData.length > 0 || catalogLoading)) {
+      // Once the catalog is active, refresh it against the latest filter set.
       const timeoutId = setTimeout(() => {
-        fetchCatalog()
+        fetchCatalog({ styles: selectedStyles, feels: selectedFeels, force: true })
       }, 100) // Small debounce to prevent rapid refetches
       return () => clearTimeout(timeoutId)
     }
@@ -167,13 +168,15 @@ export default function Home() {
 
   const handleGenerateWallpaper = async (prompt: string, styleInspirations: string[]): Promise<{ success: boolean; wallpaperUrl?: string; error?: string }> => {
     if (!selectedImage?.uploadedUrl) {
-      return { success: false, error: 'Please upload a room photo first' }
+      const error = 'Please upload a room photo first'
+      setCustomGenerateError(error)
+      return { success: false, error }
     }
 
     setIsGeneratingCustom(true)
     setGenerateError(null)
+    setCustomGenerateError(null)
     setJobStatus('queued')
-    setJobError(null)
 
     return new Promise((resolve) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -193,9 +196,6 @@ export default function Home() {
         .then(res => res.json())
         .then(data => {
           if (data.job_id) {
-            setWallpaperJobId(data.job_id)
-            console.log(`Wallpaper job created: ${data.job_id}`)
-
             // Poll for completion (cleanup handled by useEffect)
             pollJobStatus(
               data.job_id,
@@ -203,30 +203,36 @@ export default function Home() {
                 setIsGeneratingCustom(false)
                 setJobStatus('completed')
                 if (result.result?.wallpaper_url) {
-                  setGeneratedWallpaperUrl(result.result.wallpaper_url)
+                  setCustomGenerateError(null)
                   resolve({ success: true, wallpaperUrl: result.result.wallpaper_url })
                 } else {
-                  resolve({ success: false, error: 'No wallpaper URL in result' })
+                  const error = 'No wallpaper URL in result'
+                  setCustomGenerateError(error)
+                  resolve({ success: false, error })
                 }
               },
               (error) => {
                 setIsGeneratingCustom(false)
                 setJobStatus('failed')
-                setJobError(error)
+                setCustomGenerateError(error)
                 resolve({ success: false, error })
               }
             )
           } else {
             setIsGeneratingCustom(false)
             setJobStatus('failed')
-            resolve({ success: false, error: 'Failed to create job' })
+            const error = 'Failed to create job'
+            setCustomGenerateError(error)
+            resolve({ success: false, error })
           }
         })
         .catch(err => {
           console.error('Job creation error:', err)
           setIsGeneratingCustom(false)
           setJobStatus('failed')
-          resolve({ success: false, error: 'Failed to create job' })
+          const error = 'Failed to create job'
+          setCustomGenerateError(error)
+          resolve({ success: false, error })
         })
     })
   }
@@ -239,7 +245,6 @@ export default function Home() {
     setIsGeneratingCustom(true)
     setGenerateError(null)
     setJobStatus('queued')
-    setJobError(null)
 
     return new Promise((resolve) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -260,9 +265,6 @@ export default function Home() {
         .then(res => res.json())
         .then(data => {
           if (data.job_id) {
-            setPreviewJobId(data.job_id)
-            console.log(`Preview job created: ${data.job_id}`)
-
             // Poll for completion (cleanup handled by useEffect)
             pollJobStatus(
               data.job_id,
@@ -271,7 +273,6 @@ export default function Home() {
                 setJobStatus('completed')
                 if (result.result?.preview_url) {
                   setPreviewUrl(result.result.preview_url)
-                  setGeneratedWallpaperUrl(null)  // Clear generated wallpaper
                   resolve({ success: true, previewUrl: result.result.preview_url })
                 } else {
                   resolve({ success: false, error: 'No preview URL in result' })
@@ -280,7 +281,6 @@ export default function Home() {
               (error) => {
                 setIsGeneratingCustom(false)
                 setJobStatus('failed')
-                setJobError(error)
                 resolve({ success: false, error })
               }
             )
@@ -307,14 +307,35 @@ export default function Home() {
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
     setSelectedImage({ file, preview, uploadedUrl })
     setGenerateError(null)
+    setCustomGenerateError(null)
     setPreviewUrl(null)
     // Pre-fetch catalog during upload for better UX
-    fetchCatalog()
+    fetchCatalog({ styles: selectedStyles, feels: selectedFeels })
   }
 
-  const fetchCatalog = async () => {
-    // Don't refetch if already loading or already have data
-    if (catalogLoading || catalogData.length > 0) return
+  const fetchCatalog = async ({
+    styles = selectedStyles,
+    feels = selectedFeels,
+    force = false,
+  }: {
+    styles?: string[]
+    feels?: string[]
+    force?: boolean
+  } = {}) => {
+    const normalizedStyles = [...styles].sort()
+    const normalizedFeels = [...feels].sort()
+    const requestKey = JSON.stringify({
+      styles: normalizedStyles,
+      feels: normalizedFeels,
+    })
+
+    if (!force && lastCatalogRequestKeyRef.current === requestKey && catalogData.length > 0) {
+      return
+    }
+
+    catalogAbortRef.current?.abort()
+    const controller = new AbortController()
+    catalogAbortRef.current = controller
 
     setCatalogLoading(true)
     setCatalogError(null)
@@ -324,21 +345,25 @@ export default function Home() {
 
       // Build query params based on current filters
       const params = new URLSearchParams()
-      if (selectedStyles && selectedStyles.length > 0) {
-        selectedStyles.forEach(style => params.append('style', style))
+      if (normalizedStyles.length > 0) {
+        normalizedStyles.forEach(style => params.append('style', style))
       }
-      if (selectedFeels && selectedFeels.length > 0) {
-        selectedFeels.forEach(feel => params.append('feel', feel))
+      if (normalizedFeels.length > 0) {
+        normalizedFeels.forEach(feel => params.append('feel', feel))
       }
 
       const url = `${apiUrl}/api/catalog/products${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: controller.signal })
 
       if (!response.ok) {
         throw new Error('Failed to fetch catalog')
       }
 
       const data = await response.json()
+
+      if (controller.signal.aborted) {
+        return
+      }
 
       // Normalize Shopify data to our interface
       const normalizedDesigns = (data.products || []).map((product: any) => ({
@@ -361,11 +386,18 @@ export default function Home() {
       }))
 
       setCatalogData(normalizedDesigns)
+      lastCatalogRequestKeyRef.current = requestKey
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
       setCatalogError('Failed to load wallpaper designs')
       console.error('Catalog fetch error:', err)
     } finally {
-      setCatalogLoading(false)
+      if (catalogAbortRef.current === controller) {
+        catalogAbortRef.current = null
+        setCatalogLoading(false)
+      }
     }
   }
 
@@ -650,6 +682,8 @@ export default function Home() {
                       onApplyWallpaper={handleApplyWallpaper}
                       isGenerating={isGeneratingCustom}
                       jobStatus={jobStatus}
+                      generationError={customGenerateError}
+                      onClearGenerationError={() => setCustomGenerateError(null)}
                     />
                   </div>
                 </ErrorBoundary>
