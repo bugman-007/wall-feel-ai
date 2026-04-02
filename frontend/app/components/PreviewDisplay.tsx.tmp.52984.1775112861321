@@ -7,7 +7,6 @@ import SharePreview from './SharePreview'
 interface PreviewDisplayProps {
   originalUrl: string
   previewUrl: string
-  shareUrl?: string  // Optional dedicated share URL (defaults to previewUrl)
   onClose?: () => void
   quality?: '1k' | '2k' | '4k' | '8k'
 }
@@ -15,7 +14,6 @@ interface PreviewDisplayProps {
 export default function PreviewDisplay({
   originalUrl,
   previewUrl,
-  shareUrl,
   onClose,
   quality = '1k'
 }: PreviewDisplayProps) {
@@ -238,7 +236,7 @@ export default function PreviewDisplay({
       </div>
 
       {/* Share Section */}
-      <SharePreview previewUrl={previewUrl} shareUrl={shareUrl || previewUrl} />
+      <SharePreview previewUrl={previewUrl} />
     </div>
   )
 }
