@@ -862,6 +862,17 @@ export default function Home() {
         </div>
 
         <div className="hero-image-layer" />
+        <div className="hero-video-layer" aria-hidden="true">
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+          >
+            <source src="/videos/promo_video.mp4" type="video/mp4" />
+          </video>
+        </div>
         <div className="hero-content">
           <div className="brand-lockup hero-brand-lockup">
             <span className="brand-logo" aria-hidden="true">
