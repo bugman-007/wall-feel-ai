@@ -211,7 +211,7 @@ export default function PreviewDisplay({
           onClick={handleDownload}
           disabled={isDownloading}
           className="btn-primary flex items-center space-x-2"
-          title={`Download ${quality.toUpperCase()} quality image`}
+          title="Download preview image"
         >
           {isDownloading ? (
             <>
@@ -226,7 +226,7 @@ export default function PreviewDisplay({
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              <span>Download {quality.toUpperCase()}</span>
+              <span>Download Preview</span>
             </>
           )}
         </button>

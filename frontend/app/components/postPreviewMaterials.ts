@@ -1,7 +1,8 @@
 export type PostPreviewMaterialId = 'easy-peel-stick' | 'premium-matte' | 'premium-textured-3d'
-export type MeasurementUnit = 'metric' | 'imperial'
+export type MeasurementUnit = 'metric' | 'imperial' | 'inch'
 
 export const SQFT_PER_SQM = 10.7639
+export const SQIN_PER_SQM = 1550.0031
 
 export interface PostPreviewMaterial {
   id: PostPreviewMaterialId

@@ -204,7 +204,9 @@ export type PreviewApiResponse =
 export interface WallpaperTextureSuccessResponse {
   success: true
   wallpaper_url: string
+  wallpaper_urls: string[]
   public_url: string
+  public_urls?: string[]
   provider: 'google'
   model: string
   timing: {
@@ -266,6 +268,7 @@ export interface PreviewJob {
   result?: {
     preview_url?: string
     wallpaper_url?: string
+    wallpaper_urls?: string[]
     [key: string]: unknown
   }
   error_message?: string

@@ -19,7 +19,7 @@ interface PostPreviewMaterialSelectionProps {
   onWallWidthChange: (value: string) => void
   onWallHeightChange: (value: string) => void
   areaDisplay: number | null
-  areaDisplayUnit: 'sqm' | 'sqft'
+  areaDisplayUnit: 'sqm' | 'sqft' | 'sqin'
   areaSqm: number | null
   totalPrice: number | null
   cartNotice: string | null
@@ -153,6 +153,13 @@ export default function PostPreviewMaterialSelection({
               >
                 ft × ft
               </button>
+              <button
+                type="button"
+                onClick={() => onMeasurementUnitChange('inch')}
+                className={measurementUnit === 'inch' ? 'is-active' : ''}
+              >
+                in × in
+              </button>
             </div>
           </div>
 
@@ -164,11 +171,19 @@ export default function PostPreviewMaterialSelection({
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder={measurementUnit === 'metric' ? 'e.g. 4.20' : 'e.g. 13.75'}
+                  placeholder={
+                    measurementUnit === 'metric'
+                      ? 'e.g. 4.20'
+                      : measurementUnit === 'imperial'
+                        ? 'e.g. 13.75'
+                        : 'e.g. 165.35'
+                  }
                   value={wallWidth}
                   onChange={(event) => onWallWidthChange(event.target.value)}
                 />
-                <strong>{measurementUnit === 'metric' ? 'm' : 'ft'}</strong>
+                <strong>
+                  {measurementUnit === 'metric' ? 'm' : measurementUnit === 'imperial' ? 'ft' : 'in'}
+                </strong>
               </div>
             </label>
 
@@ -179,11 +194,19 @@ export default function PostPreviewMaterialSelection({
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder={measurementUnit === 'metric' ? 'e.g. 2.80' : 'e.g. 9.20'}
+                  placeholder={
+                    measurementUnit === 'metric'
+                      ? 'e.g. 2.80'
+                      : measurementUnit === 'imperial'
+                        ? 'e.g. 9.20'
+                        : 'e.g. 110.24'
+                  }
                   value={wallHeight}
                   onChange={(event) => onWallHeightChange(event.target.value)}
                 />
-                <strong>{measurementUnit === 'metric' ? 'm' : 'ft'}</strong>
+                <strong>
+                  {measurementUnit === 'metric' ? 'm' : measurementUnit === 'imperial' ? 'ft' : 'in'}
+                </strong>
               </div>
             </label>
           </div>
@@ -198,7 +221,13 @@ export default function PostPreviewMaterialSelection({
               <strong>
                 {areaDisplay !== null
                   ? `${formatNumber(areaDisplay)} ${areaDisplayUnit}`
-                  : `Enter width and height in ${measurementUnit === 'metric' ? 'meters' : 'feet'}`}
+                  : `Enter width and height in ${
+                    measurementUnit === 'metric'
+                      ? 'meters'
+                      : measurementUnit === 'imperial'
+                        ? 'feet'
+                        : 'inches'
+                  }`}
               </strong>
               <p>
                 {areaSqm !== null ? `${formatNumber(areaSqm)} sqm billable area` : 'Pricing is normalized to square meters.'}

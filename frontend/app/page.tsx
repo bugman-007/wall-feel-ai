@@ -7,6 +7,7 @@ import ImageUpload from './components/ImageUpload'
 import {
   POST_PREVIEW_MATERIALS,
   SQFT_PER_SQM,
+  SQIN_PER_SQM,
   type MeasurementUnit,
   type PostPreviewMaterialId,
 } from './components/postPreviewMaterials'
@@ -94,10 +95,6 @@ const PostPreviewMaterialSelection = dynamic(() => import('./components/PostPrev
   loading: DeferredSectionFallback,
 })
 
-const QualitySelector = dynamic(() => import('./components/QualitySelector'), {
-  loading: DeferredSectionFallback,
-})
-
 const StyleFeelFilter = dynamic(() => import('./components/StyleFeelFilter'), {
   loading: DeferredSectionFallback,
 })
@@ -113,7 +110,6 @@ export default function Home() {
     uploadedUrl?: string
   } | null>(null)
   const [selectedWallpaper, setSelectedWallpaper] = useState<WallpaperDesign | null>(null)
-  const [selectedQuality, setSelectedQuality] = useState<'1k' | '2k' | '4k' | '8k'>('1k')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -133,6 +129,7 @@ export default function Home() {
   const [catalogData, setCatalogData] = useState<WallpaperDesign[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
+  const previewQuality = '1k' as const
 
   // Refs for cleanup
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -284,7 +281,11 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStyles, selectedFeels]) // Intentionally excluding catalogData, catalogLoading, fetchCatalog
 
-  const handleGenerateWallpaper = async (prompt: string, styleInspirations: string[]): Promise<{ success: boolean; wallpaperUrl?: string; error?: string }> => {
+  const handleGenerateWallpaper = async (
+    prompt: string,
+    styleInspirations: string[],
+    referenceImageUrl?: string
+  ): Promise<{ success: boolean; wallpaperUrls?: string[]; error?: string }> => {
     if (!selectedImage?.uploadedUrl) {
       const error = 'Please upload a room photo first'
       setCustomGenerateError(error)
@@ -295,6 +296,8 @@ export default function Home() {
     setGenerateError(null)
     setCustomGenerateError(null)
     setJobStatus('queued')
+
+    const trimmedPrompt = prompt.trim()
 
     return new Promise((resolve) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -307,8 +310,9 @@ export default function Home() {
         },
         body: JSON.stringify({
           type: 'wallpaper_texture',
-          prompt: prompt,
+          prompt: trimmedPrompt,
           style_inspirations: styleInspirations,
+          reference_image_url: referenceImageUrl,
         })
       })
         .then(res => res.json())
@@ -320,11 +324,12 @@ export default function Home() {
               (result) => {
                 setIsGeneratingCustom(false)
                 setJobStatus('completed')
-                if (result.result?.wallpaper_url) {
+                const wallpaperUrls = result.result?.wallpaper_urls || (result.result?.wallpaper_url ? [result.result.wallpaper_url] : [])
+                if (wallpaperUrls.length > 0) {
                   setCustomGenerateError(null)
-                  resolve({ success: true, wallpaperUrl: result.result.wallpaper_url })
+                  resolve({ success: true, wallpaperUrls })
                 } else {
-                  const error = 'No wallpaper URL in result'
+                  const error = 'No wallpaper options were returned'
                   setCustomGenerateError(error)
                   resolve({ success: false, error })
                 }
@@ -377,7 +382,7 @@ export default function Home() {
           type: 'room_preview',
           image_url: selectedImage.uploadedUrl,
           wallpaper_url: wallpaperUrl,
-          quality: selectedQuality,
+          quality: previewQuality,
         })
       })
         .then(res => res.json())
@@ -427,12 +432,19 @@ export default function Home() {
     parsedHeight > 0
 
   const areaDisplay = hasValidDimensions ? parsedWidth * parsedHeight : null
-  const areaDisplayUnit = measurementUnit === 'metric' ? 'sqm' : 'sqft'
+  const areaDisplayUnit =
+    measurementUnit === 'metric'
+      ? 'sqm'
+      : measurementUnit === 'imperial'
+        ? 'sqft'
+        : 'sqin'
   const areaSqm = areaDisplay === null
     ? null
     : measurementUnit === 'metric'
       ? areaDisplay
-      : areaDisplay / SQFT_PER_SQM
+      : measurementUnit === 'imperial'
+        ? areaDisplay / SQFT_PER_SQM
+        : areaDisplay / SQIN_PER_SQM
   const totalPrice = selectedMaterial && areaSqm !== null
     ? areaSqm * selectedMaterial.ratePerSqm
     : null
@@ -569,7 +581,7 @@ export default function Home() {
         body: JSON.stringify({
           image_url: selectedImage.uploadedUrl,
           wallpaper_id: selectedWallpaper.id,
-          quality: selectedQuality,
+          quality: previewQuality,
         })
       })
 
@@ -771,27 +783,16 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Quality Selector */}
-                  {selectedWallpaper && !previewUrl && (
-                    <div className="step-section">
-                      <h3 className="step-title">4. Choose Output Quality</h3>
-                      <QualitySelector
-                        selectedId={selectedQuality}
-                        onSelect={setSelectedQuality}
-                      />
-                    </div>
-                  )}
-
                   {/* Generate Preview Button */}
                   {selectedWallpaper && !previewUrl && (
                     <div className="step-section">
-                      <h3 className="step-title">5. Generate Preview</h3>
+                      <h3 className="step-title">4. Generate Preview</h3>
                       <div className="card review-action-card">
                         <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                           AI will automatically detect walls and apply the wallpaper
                         </p>
                         <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
-                          Selected quality: <strong style={{ color: 'var(--text-primary)' }}>{selectedQuality.toUpperCase()}</strong> (Estimated time: {selectedQuality === '1k' ? '30-40' : selectedQuality === '2k' ? '35-45' : selectedQuality === '4k' ? '~1 minute' : '> 1 minute'} seconds)
+                          Final previews are generated automatically in <strong style={{ color: 'var(--text-primary)' }}>1K</strong> for the fastest review flow.
                         </p>
                         <button
                           onClick={handleGeneratePreview}
@@ -876,7 +877,7 @@ export default function Home() {
                   setPreviewUrl(null)
                   resetPostPreviewPurchase()
                 }}
-                quality={selectedQuality}
+                quality={previewQuality}
               />
               <PostPreviewMaterialSelection
                 previewImageUrl={previewUrl}

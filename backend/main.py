@@ -568,14 +568,16 @@ class DirectPreviewRequest(BaseModel):
 
 class CustomDesignRequest(BaseModel):
     """Request for custom AI wallpaper texture generation from text prompt"""
-    prompt: str
+    prompt: str = ""
     style_inspirations: list[str] = []
+    reference_image_url: Optional[str] = None
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "prompt": "Luxurious warm and elegant wallpaper with subtle texture",
-                "style_inspirations": ["Tropical Paradise", "Warm Minimal Texture"]
+                "style_inspirations": ["Tropical Paradise", "Warm Minimal Texture"],
+                "reference_image_url": "https://pub-xxx.r2.dev/uploads/design.png"
             }
         }
     }
@@ -609,6 +611,7 @@ class PreviewJobCreate(BaseModel):
     # For wallpaper_texture
     prompt: Optional[str] = None
     style_inspirations: list[str] = []
+    reference_image_url: Optional[str] = None
 
     model_config = {
         "json_schema_extra": {
@@ -868,16 +871,16 @@ async def ai_generate_wallpaper_texture(request: CustomDesignRequest):
         logger.info(f"Wallpaper texture generation requested: styles={len(request.style_inspirations)}")
 
         # Validate prompt
-        if not request.prompt or len(request.prompt.strip()) == 0:
-            if len(request.style_inspirations) == 0:
-                raise HTTPException(status_code=400, detail="Either prompt or style inspirations must be provided")
+        if (not request.prompt or len(request.prompt.strip()) == 0) and len(request.style_inspirations) == 0 and not request.reference_image_url:
+            raise HTTPException(status_code=400, detail="Prompt, style inspirations, or a reference image must be provided")
 
         # Run blocking generation in thread pool
         logger.info("Starting wallpaper texture generation...")
         result = await asyncio.to_thread(
             generate_wallpaper_texture,
             prompt=request.prompt,
-            style_inspirations=request.style_inspirations
+            style_inspirations=request.style_inspirations,
+            reference_image_url=request.reference_image_url
         )
 
         if result and result.get("success"):
@@ -1156,12 +1159,13 @@ async def create_preview_job(request: PreviewJobCreate):
             job_type = JobType.ROOM_PREVIEW
 
         else:  # wallpaper_texture
-            if not request.prompt and not request.style_inspirations:
-                raise HTTPException(status_code=400, detail="prompt or style_inspirations required for wallpaper_texture")
+            if not (request.prompt and request.prompt.strip()) and not request.style_inspirations and not request.reference_image_url:
+                raise HTTPException(status_code=400, detail="prompt, style_inspirations, or reference_image_url required for wallpaper_texture")
 
             input_payload = {
                 "prompt": request.prompt,
-                "style_inspirations": request.style_inspirations
+                "style_inspirations": request.style_inspirations,
+                "reference_image_url": request.reference_image_url
             }
             job_type = JobType.WALLPAPER_TEXTURE
 
@@ -1369,11 +1373,13 @@ async def _process_texture_job(job) -> Optional[Dict[str, Any]]:
     input_data = job.input_payload
     prompt = input_data.get("prompt", "")
     style_inspirations = input_data.get("style_inspirations", [])
+    reference_image_url = input_data.get("reference_image_url")
 
     # Call async generation with retry
     result = await generate_wallpaper_texture_async(
         prompt=prompt,
         style_inspirations=style_inspirations,
+        reference_image_url=reference_image_url,
         max_retries=3
     )
 

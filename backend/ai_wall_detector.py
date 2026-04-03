@@ -489,9 +489,47 @@ def _build_enhanced_prompt(
     return enhanced_prompt
 
 
+def _build_reference_edit_prompt(
+    prompt: str,
+    style_inspirations: list[str] = None
+) -> str:
+    """
+    Build an editing prompt for uploaded wallpaper artwork.
+
+    This path should preserve the source design and only make targeted changes
+    requested by the user, rather than inventing a new unrelated pattern.
+    """
+    cleaned_prompt = (prompt or "").strip()
+    style_prompts = []
+    if style_inspirations:
+        for style_name in style_inspirations:
+            if style_name in STYLE_INSPIRATION_PROMPTS:
+                style_prompts.append(STYLE_INSPIRATION_PROMPTS[style_name])
+
+    prompt_parts = [
+        "Edit the uploaded wallpaper design rather than replacing it with a new unrelated concept.",
+        "Preserve the original composition, layout, focal subjects, decorative structure, and recognizable visual identity unless the user explicitly asks to change them.",
+        "Make only the requested modifications and keep the result clearly derived from the uploaded design.",
+        "Return a flat wallpaper artwork only, suitable for wall application.",
+    ]
+
+    if cleaned_prompt:
+        prompt_parts.append(f"Requested edit: {cleaned_prompt}")
+    else:
+        prompt_parts.append("Requested edit: Refine the uploaded design into a polished premium wallpaper while keeping it recognizably the same artwork.")
+
+    if style_prompts:
+        prompt_parts.append(f"Optional style accents: {'; '.join(style_prompts)}")
+
+    return " ".join(prompt_parts)
+
+
 def _generate_texture_bytes(
     client,
-    enhanced_prompt: str
+    enhanced_prompt: str,
+    model_name: str = 'gemini-2.5-flash-image',
+    reference_image_bytes: Optional[bytes] = None,
+    reference_image_mime_type: Optional[str] = None
 ) -> tuple[Optional[bytes], float]:
     """
     Generate wallpaper texture bytes using Gemini 2.5 Flash.
@@ -508,12 +546,33 @@ def _generate_texture_bytes(
     logger.info("Generating wallpaper texture with Gemini 2.5 Flash...")
     generation_start = time.time()
 
-    texture_response = client.models.generate_content(
-        model='gemini-2.5-flash-image',
-        contents=[
+    if reference_image_bytes is not None:
+        actual_reference_mime = reference_image_mime_type or _detect_mime_type(reference_image_bytes)
+        reference_image = types.Part.from_bytes(
+            data=reference_image_bytes,
+            mime_type=actual_reference_mime
+        )
+        contents = [
+            enhanced_prompt,
+            reference_image,
+            (
+                "Important: keep the output visibly based on the uploaded design. "
+                "Do not ignore the source artwork and do not replace it with a different composition."
+            ),
+            (
+                "Return a single edited wallpaper artwork only. "
+                "Do not create a room mockup, product shot, invitation, poster, or unrelated scene."
+            ),
+        ]
+    else:
+        contents = [
             f"Generate a seamless wallpaper texture pattern. {enhanced_prompt}",
-            "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design."
-        ],
+            "Create a high-quality, tileable wallpaper pattern. The pattern should be photorealistic and suitable for interior design.",
+        ]
+
+    texture_response = client.models.generate_content(
+        model=model_name,
+        contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=['IMAGE'],
         )
@@ -532,7 +591,8 @@ def _generate_texture_bytes(
 
 def generate_wallpaper_texture(
     prompt: str,
-    style_inspirations: list[str] = None
+    style_inspirations: list[str] = None,
+    reference_image_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Generate wallpaper texture only from text prompt using Gemini 2.5 Flash Image
@@ -561,42 +621,115 @@ def generate_wallpaper_texture(
         client = genai.Client(api_key=api_key)
         start_time = time.time()
 
-        # Build enhanced prompt
-        enhanced_prompt = _build_enhanced_prompt(prompt, style_inspirations)
-        logger.info(f"Texture generation request: prompt='{enhanced_prompt[:100]}...'")
+        reference_image_bytes: Optional[bytes] = None
+        reference_image_mime_type: Optional[str] = None
+        if reference_image_url:
+            reference_image_bytes = _get_cached_room_image(reference_image_url)
+            if reference_image_bytes is None:
+                logger.info("Downloading uploaded design reference image...")
+                reference_image_bytes = _download_image(reference_image_url)
+                _cache_room_image(reference_image_url, reference_image_bytes)
+            reference_image_mime_type = _detect_mime_type(reference_image_bytes)
+            logger.info(f"Using uploaded design reference image ({reference_image_mime_type})")
 
-        # Generate texture bytes
-        wallpaper_bytes, generation_elapsed = _generate_texture_bytes(client, enhanced_prompt)
-        if not wallpaper_bytes:
-            return None
+        cleaned_prompt = (prompt or "").strip()
+        if reference_image_bytes is not None:
+            enhanced_prompt = _build_reference_edit_prompt(cleaned_prompt, style_inspirations)
+            texture_model = 'gemini-3.1-flash-image-preview'
+        else:
+            has_text_direction = bool(cleaned_prompt or style_inspirations)
+            enhanced_prompt = (
+                _build_enhanced_prompt(cleaned_prompt, style_inspirations)
+                if has_text_direction
+                else "Develop this uploaded artwork into a polished, premium wallpaper collection while preserving its core visual identity."
+            )
+            texture_model = 'gemini-2.5-flash-image'
 
-        # Detect MIME type
-        wallpaper_mime = _detect_mime_type(wallpaper_bytes)
-
-        # Upload to R2
-        upload_start = time.time()
-        wallpaper_filename = f"wallpapers/custom-{uuid.uuid4()}.webp"
-        _, wallpaper_presigned_url = r2_client.upload_file_with_presigned_url(
-            file_data=wallpaper_bytes,
-            filename=wallpaper_filename,
-            content_type='image/webp',
-            expiration=7200
+        logger.info(
+            "Texture generation request: prompt='%s...', reference_image=%s, model=%s",
+            enhanced_prompt[:100],
+            "yes" if reference_image_bytes is not None else "no",
+            texture_model
         )
-        upload_elapsed = time.time() - upload_start
+
+        variation_briefs = [
+            (
+                "Create the flagship option. Keep it the closest to the uploaded design and make only the essential requested edits."
+                if reference_image_bytes is not None else
+                "Create the flagship option with a balanced motif scale and a polished luxury rhythm."
+            ),
+            (
+                "Create a second option that keeps the same composition and key elements, but refines the requested edits with a softer premium finish."
+                if reference_image_bytes is not None else
+                "Create a second option with a calmer composition, softer spacing, and a more understated pattern density."
+            ),
+            (
+                "Create a third option that still preserves the uploaded design's layout and identity, but explores a slightly more expressive styling of the requested edit."
+                if reference_image_bytes is not None else
+                "Create a third option with a bolder statement, richer contrast, and slightly more expressive motif movement."
+            ),
+        ]
+
+        wallpaper_urls: list[str] = []
+        public_urls: list[str] = []
+        generation_elapsed_total = 0.0
+        upload_elapsed_total = 0.0
+
+        for variation_index, variation_brief in enumerate(variation_briefs, start=1):
+            variant_prompt = (
+                f"{enhanced_prompt}\n\n"
+                f"Variation {variation_index} of {len(variation_briefs)}. "
+                f"{variation_brief}"
+            )
+
+            wallpaper_bytes, generation_elapsed = _generate_texture_bytes(
+                client,
+                variant_prompt,
+                model_name=texture_model,
+                reference_image_bytes=reference_image_bytes,
+                reference_image_mime_type=reference_image_mime_type,
+            )
+            generation_elapsed_total += generation_elapsed
+
+            if not wallpaper_bytes:
+                logger.warning(f"Wallpaper texture variation {variation_index} did not return a valid image")
+                continue
+
+            upload_start = time.time()
+            wallpaper_filename = f"wallpapers/custom-{uuid.uuid4()}.webp"
+            _, wallpaper_presigned_url = r2_client.upload_file_with_presigned_url(
+                file_data=wallpaper_bytes,
+                filename=wallpaper_filename,
+                content_type='image/webp',
+                expiration=7200
+            )
+            upload_elapsed_total += time.time() - upload_start
+
+            wallpaper_urls.append(wallpaper_presigned_url)
+            public_urls.append(f"https://pub-{r2_client.account_id}.r2.dev/{wallpaper_filename}")
+
+        if not wallpaper_urls:
+            return None
 
         total_elapsed = time.time() - start_time
 
-        logger.info(f"Wallpaper texture generated successfully in {total_elapsed:.2f}s")
+        logger.info(
+            f"Wallpaper texture generated successfully in {total_elapsed:.2f}s "
+            f"with {len(wallpaper_urls)} option(s)"
+        )
 
         return {
             "success": True,
-            "wallpaper_url": wallpaper_presigned_url,
-            "public_url": f"https://pub-{r2_client.account_id}.r2.dev/{wallpaper_filename}",
+            "wallpaper_url": wallpaper_urls[0],
+            "public_url": public_urls[0],
+            "wallpaper_urls": wallpaper_urls,
+            "public_urls": public_urls,
+            "variants": len(wallpaper_urls),
             "provider": "google",
-            "model": "gemini-2.5-flash-image",
+            "model": texture_model,
             "timing": {
-                "generation_time": round(generation_elapsed, 2),
-                "upload_time": round(upload_elapsed, 2),
+                "generation_time": round(generation_elapsed_total, 2),
+                "upload_time": round(upload_elapsed_total, 2),
                 "total_time": round(total_elapsed, 2)
             }
         }
@@ -927,6 +1060,7 @@ async def generate_wallpaper_preview_async(
 async def generate_wallpaper_texture_async(
     prompt: str,
     style_inspirations: list[str] = None,
+    reference_image_url: Optional[str] = None,
     max_retries: int = 3
 ) -> Optional[Dict[str, Any]]:
     """
@@ -947,7 +1081,8 @@ async def generate_wallpaper_texture_async(
         result = await asyncio.to_thread(
             generate_wallpaper_texture,
             prompt=prompt,
-            style_inspirations=style_inspirations
+            style_inspirations=style_inspirations,
+            reference_image_url=reference_image_url
         )
 
         # Check if result indicates failure with retryable error
