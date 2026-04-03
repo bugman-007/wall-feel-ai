@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import ImageUpload from './components/ImageUpload'
 import {
   POST_PREVIEW_MATERIALS,
@@ -21,13 +22,46 @@ interface WallpaperDesign {
 }
 
 const features = [
-  { title: 'AI Upload & Preview', description: 'Upload room photos and instantly map premium wallpaper concepts.' },
-  { title: 'Smart Material Selection', description: 'Compare peel-and-stick, classic, and premium finishes in real time.' },
-  { title: '3D Immersive Visualization', description: 'See perspective-aware previews before committing to installation.' },
-  { title: 'Custom Design Request', description: 'Work with our team to create tailored textures for unique spaces.' },
+  {
+    title: 'AI Upload & Preview',
+    description: 'Upload room photos and instantly map premium wallpaper concepts.',
+    icon: '/feature-icons/ai-upload-preview.png',
+  },
+  {
+    title: 'Smart Material Selection',
+    description: 'Compare peel-and-stick, classic, and premium finishes in real time.',
+    icon: '/feature-icons/smart-material-selection.png',
+  },
+  {
+    title: '3D Immersive Visualization',
+    description: 'See perspective-aware previews before committing to installation.',
+    icon: '/feature-icons/immersive-visualization.png',
+  },
+  {
+    title: 'Custom Design Request',
+    description: 'Work with our team to create tailored textures for unique spaces.',
+    icon: '/feature-icons/custom-design-request.png',
+  },
 ]
 
-const steps = ['Upload Your Space', 'Choose Style & Material or Create Your Own', 'AI Generates Preview', 'Order Your Design']
+const steps = [
+  {
+    title: 'Upload Your Space',
+    icon: '/process-icons/upload-your-space.png',
+  },
+  {
+    title: 'Choose Style & Material',
+    icon: '/process-icons/choose-style-material.png',
+  },
+  {
+    title: 'AI Generates Preview',
+    icon: '/process-icons/ai-generates-preview.png',
+  },
+  {
+    title: 'Order Your Design',
+    icon: '/process-icons/order-your-design.png',
+  },
+]
 
 const formatPrice = (value: number) =>
   new Intl.NumberFormat('en-GB', {
@@ -603,7 +637,15 @@ export default function Home() {
 
         <div className="hero-image-layer" />
         <div className="hero-content">
-          <p className="brand-mark">WALLFEEL</p>
+          <div className="brand-lockup hero-brand-lockup">
+            <span className="brand-logo" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="brand-mark">WALLFEEL</span>
+          </div>
           <h1>Transform Your Walls Into Luxury Experiences</h1>
           <p className="hero-subtitle">AI-powered wall design. Upload. Visualize. Experience.</p>
           <div className="hero-actions">
@@ -617,8 +659,19 @@ export default function Home() {
         <div className="feature-grid">
           {features.map((item) => (
             <article key={item.title} className="feature-card">
-              <h3>{item.title}</h3>
-              <p>{item.description}</p>
+              <div className="feature-card-head">
+                <div className="feature-card-icon" aria-hidden="true">
+                  <Image
+                    src={item.icon}
+                    alt=""
+                    width={56}
+                    height={56}
+                    className="feature-card-icon-image"
+                  />
+                </div>
+                <h3>{item.title}</h3>
+              </div>
+              <p className="feature-card-description">{item.description}</p>
             </article>
           ))}
         </div>
@@ -628,9 +681,18 @@ export default function Home() {
         <h2 className="section-title">How It Works</h2>
         <div className="steps-row">
           {steps.map((step, index) => (
-            <div key={step} className="step-item">
-              <span>{index + 1}</span>
-              <p>{step}</p>
+            <div key={step.title} className="step-item">
+              <div className="step-item-visual" aria-hidden="true">
+                <Image
+                  src={step.icon}
+                  alt=""
+                  width={72}
+                  height={72}
+                  className="step-item-image"
+                />
+                <span className="step-item-number">{index + 1}</span>
+              </div>
+              <p>{step.title}</p>
             </div>
           ))}
         </div>

@@ -10,7 +10,7 @@ export interface PostPreviewMaterial {
   ratePerSqm: number
   finishLabel: string
   features: string[]
-  swatchClassName: string
+  swatchImage: string
 }
 
 export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
@@ -20,7 +20,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#EPS 0101',
     ratePerSqm: 29.99,
     finishLabel: 'Easy Peel & Stick',
-    swatchClassName: 'material-swatch-easy',
+    swatchImage: '/material-swatches/easy-peel-stick.webp',
     features: [
       'PVC-Free Vinyl Material',
       'Waterproof Surface',
@@ -34,7 +34,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#PM 0101',
     ratePerSqm: 39.99,
     finishLabel: 'Premium Matte',
-    swatchClassName: 'material-swatch-matte',
+    swatchImage: '/material-swatches/premium-matte.webp',
     features: [
       'Lightweight Fabric Material',
       'Installed Using Wallpaper Paste',
@@ -48,7 +48,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#P3D.T 0101',
     ratePerSqm: 49.99,
     finishLabel: 'Premium 3D Textured',
-    swatchClassName: 'material-swatch-textured',
+    swatchImage: '/material-swatches/premium-textured-3d.webp',
     features: [
       'Heavy, Thick Fabric Material',
       'Installed Using Wallpaper Paste',

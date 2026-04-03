@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import {
   POST_PREVIEW_MATERIALS,
   SQFT_PER_SQM,
@@ -102,8 +103,14 @@ export default function PostPreviewMaterialSelection({
                   <h4>{material.name}</h4>
                   <p className="material-card-code">{material.code}</p>
 
-                  <div className={`material-swatch ${material.swatchClassName}`}>
-                    <span className="material-swatch-roll" />
+                  <div className="material-swatch">
+                    <Image
+                      src={material.swatchImage}
+                      alt={`${material.name} material sample`}
+                      fill
+                      className="material-swatch-image"
+                      sizes="(max-width: 980px) 100vw, (max-width: 1120px) 50vw, 28vw"
+                    />
                   </div>
 
                   <ul className="material-feature-list">

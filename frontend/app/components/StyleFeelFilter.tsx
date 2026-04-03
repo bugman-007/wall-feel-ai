@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useEffect } from 'react'
 
 interface StyleFeelFilterProps {
@@ -153,7 +154,14 @@ export default function StyleFeelFilter({
             onClick={onSurpriseMe}
             className="filter-chip surprise-chip"
           >
-            ✨ Surprise me
+            <Image
+              src="/ui-icons/surprise-curation.png"
+              alt=""
+              width={18}
+              height={18}
+              className="surprise-chip-icon"
+            />
+            <span>Surprise me</span>
           </button>
         </div>
       </div>
