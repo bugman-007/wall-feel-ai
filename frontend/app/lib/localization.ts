@@ -157,17 +157,17 @@ export const SUPPORTED_LOCALES: LocaleConfig[] = [
 
 export const SUPPORTED_CURRENCIES: CurrencyConfig[] = [
   { code: 'USD', label: 'USD', symbol: '$' },
-  { code: 'EUR', label: 'EUR', symbol: 'EUR' },
-  { code: 'GBP', label: 'GBP', symbol: 'GBP' },
-  { code: 'CAD', label: 'CAD', symbol: 'CAD' },
-  { code: 'PLN', label: 'PLN', symbol: 'PLN' },
-  { code: 'RUB', label: 'RUB', symbol: 'RUB' },
-  { code: 'BRL', label: 'BRL', symbol: 'BRL' },
+  { code: 'EUR', label: 'EUR', symbol: '€' },
+  { code: 'GBP', label: 'GBP', symbol: '£' },
+  { code: 'CAD', label: 'CAD', symbol: 'C$' },
+  { code: 'PLN', label: 'PLN', symbol: 'zł' },
+  { code: 'RUB', label: 'RUB', symbol: '₽' },
+  { code: 'BRL', label: 'BRL', symbol: 'R$' },
   { code: 'CHF', label: 'CHF', symbol: 'CHF' },
-  { code: 'CZK', label: 'CZK', symbol: 'CZK' },
-  { code: 'DKK', label: 'DKK', symbol: 'DKK' },
-  { code: 'SEK', label: 'SEK', symbol: 'SEK' },
-  { code: 'NOK', label: 'NOK', symbol: 'NOK' },
+  { code: 'CZK', label: 'CZK', symbol: 'Kč' },
+  { code: 'DKK', label: 'DKK', symbol: 'kr' },
+  { code: 'SEK', label: 'SEK', symbol: 'kr' },
+  { code: 'NOK', label: 'NOK', symbol: 'kr' },
 ]
 
 const USD_TO_CURRENCY_RATES: Record<SupportedCurrencyCode, number> = {
@@ -249,6 +249,7 @@ const EN_MESSAGES = {
       browse: 'Browse Catalog',
       create: 'Create Your Own',
     },
+    chooseCatalog: '2. Browse by Category',
     chooseStyleFeel: '2. Choose Style & Feel',
     chooseWallpaper: '3. Choose Your Wallpaper Design',
     chooseWallpaperFiltered: '3. Choose from {count} {filterWord}',
@@ -283,10 +284,13 @@ const EN_MESSAGES = {
     uploadFailed: 'Failed to upload image. Please try again.',
   },
   filter: {
+    parentLabel: 'Choose a category',
+    childLabel: 'Choose a collection',
     chooseStyle: 'Choose Your Style',
     chooseFeel: 'How should it feel?',
+    clearSelection: 'Clear selection - Show all designs',
     clearAll: 'Clear all filters - Show all designs',
-    failedToLoad: 'Failed to load filters',
+    failedToLoad: 'Failed to load catalog categories.',
   },
   wallpaperGrid: {
     failedToLoad: 'Failed to load wallpaper designs. Please try again.',
@@ -1661,6 +1665,15 @@ export function getLocaleConfig(locale: SupportedLocaleCode): LocaleConfig {
 
 export function getDefaultCurrencyForLocale(locale: SupportedLocaleCode): SupportedCurrencyCode {
   return getLocaleConfig(locale).defaultCurrency
+}
+
+export function getCurrencyConfig(currency: SupportedCurrencyCode): CurrencyConfig {
+  return SUPPORTED_CURRENCIES.find((item) => item.code === currency) || SUPPORTED_CURRENCIES[0]
+}
+
+export function formatCurrencySelectorLabel(currency: SupportedCurrencyCode): string {
+  const config = getCurrencyConfig(currency)
+  return `${config.symbol} ${config.code}`
 }
 
 export function getMessages(locale: SupportedLocaleCode): AppMessages {

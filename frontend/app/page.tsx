@@ -14,6 +14,7 @@ import {
 } from './components/postPreviewMaterials'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LocalizationProvider } from './contexts/LocalizationContext'
+import { getCollectionDisplayName } from './lib/catalogTaxonomy'
 import {
   DEFAULT_CURRENCY,
   DEFAULT_LOCALE,
@@ -22,6 +23,7 @@ import {
   convertUsdToCurrency,
   detectSupportedLocale,
   formatCurrencyValue,
+  formatCurrencySelectorLabel,
   getDefaultCurrencyForLocale,
   getLocaleConfig,
   getMessages,
@@ -84,7 +86,7 @@ const PostPreviewMaterialSelection = dynamic(() => import('./components/PostPrev
   loading: DeferredSectionFallback,
 })
 
-const StyleFeelFilter = dynamic(() => import('./components/StyleFeelFilter'), {
+const CategoryFilter = dynamic(() => import('./components/CategoryFilter'), {
   loading: DeferredSectionFallback,
 })
 
@@ -225,8 +227,9 @@ export default function Home() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(false)
-  const [selectedStyles, setSelectedStyles] = useState<string[]>([])
-  const [selectedFeels, setSelectedFeels] = useState<string[]>([])
+  const [selectedParentCollection, setSelectedParentCollection] = useState<string | null>(null)
+  const [selectedChildCollection, setSelectedChildCollection] = useState<string | null>(null)
+  const [activeCatalogLabel, setActiveCatalogLabel] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'browse' | 'create'>('browse')
   const [isGeneratingCustom, setIsGeneratingCustom] = useState(false)
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
@@ -248,6 +251,7 @@ export default function Home() {
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const catalogAbortRef = useRef<AbortController | null>(null)
   const lastCatalogRequestKeyRef = useRef<string | null>(null)
+  const activeBrowsePreviewJobRef = useRef<string | null>(null)
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
@@ -306,22 +310,6 @@ export default function Home() {
     setCartNotice(null)
   }
 
-  const handleStyleSelect = (style: string) => {
-    setSelectedStyles(prev =>
-      prev.includes(style)
-        ? prev.filter(s => s !== style)
-        : [...prev, style]
-    )
-  }
-
-  const handleFeelSelect = (feel: string) => {
-    setSelectedFeels(prev =>
-      prev.includes(feel)
-        ? prev.filter(f => f !== feel)
-        : [...prev, feel]
-    )
-  }
-
   const handleMaterialSelect = (materialId: PostPreviewMaterialId) => {
     setSelectedMaterialId(materialId)
     setCartNotice(null)
@@ -346,7 +334,12 @@ export default function Home() {
   }
 
   // Poll job status until completion or failure
-  const pollJobStatus = async (jobId: string, onComplete: (result: any) => void, onError: (error: string) => void) => {
+  const pollJobStatus = async (
+    jobId: string,
+    onComplete: (result: any) => void,
+    onError: (error: string) => void,
+    onCancelled?: (message: string) => void
+  ) => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const pollInterval = 2000  // 2 seconds
 
@@ -362,6 +355,12 @@ export default function Home() {
 
         if (data.status === 'completed') {
           onComplete(data)
+        } else if (data.status === 'cancelled') {
+          if (onCancelled) {
+            onCancelled(data.error_message || 'Generation cancelled')
+          } else {
+            onError(data.error_message || 'Generation cancelled')
+          }
         } else if (data.status === 'failed') {
           onError(data.error_message || 'Job failed')
         } else {
@@ -385,14 +384,37 @@ export default function Home() {
     }
   }
 
+  const cancelActiveBrowsePreview = async () => {
+    const jobId = activeBrowsePreviewJobRef.current
+    if (!jobId) {
+      return
+    }
+
+    activeBrowsePreviewJobRef.current = null
+    cleanupPolling()
+    setIsGenerating(false)
+    setGenerateError(null)
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      await fetch(`${apiUrl}/api/preview-jobs/${jobId}`, {
+        method: 'DELETE',
+      })
+    } catch (err) {
+      console.error('Preview cancel error:', err)
+    }
+  }
+
   // Cleanup polling on component unmount
   useEffect(() => {
     return () => {
       cleanupPolling()
+      void cancelActiveBrowsePreview()
       const activeCatalogRequest = catalogAbortRef.current
       catalogAbortRef.current = null
       activeCatalogRequest?.abort()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -450,14 +472,17 @@ export default function Home() {
   // Refetch catalog when filters change (only after initial load)
   useEffect(() => {
     if (selectedImage?.uploadedUrl && (catalogData.length > 0 || catalogLoading)) {
-      // Once the catalog is active, refresh it against the latest filter set.
+      // Once the catalog is active, refresh it against the latest collection selection.
       const timeoutId = setTimeout(() => {
-        fetchCatalog({ styles: selectedStyles, feels: selectedFeels, force: true })
+        fetchCatalog({
+          collectionHandle: selectedChildCollection ?? selectedParentCollection,
+          force: true,
+        })
       }, 100) // Small debounce to prevent rapid refetches
       return () => clearTimeout(timeoutId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStyles, selectedFeels]) // Intentionally excluding catalogData, catalogLoading, fetchCatalog
+  }, [selectedParentCollection, selectedChildCollection]) // Intentionally excluding catalogData, catalogLoading, fetchCatalog
 
   const handleGenerateWallpaper = async (
     prompt: string,
@@ -641,30 +666,57 @@ export default function Home() {
     )
   }
 
+  const handleCatalogSelectionChange = ({
+    parentHandle,
+    childHandle,
+    activeLabel,
+  }: {
+    parentHandle: string | null
+    childHandle: string | null
+    activeLabel: string | null
+  }) => {
+    void cancelActiveBrowsePreview()
+    setSelectedParentCollection(parentHandle)
+    setSelectedChildCollection(childHandle)
+    setActiveCatalogLabel(activeLabel)
+    setSelectedWallpaper(null)
+    setPreviewUrl(null)
+    setGenerateError(null)
+    resetPostPreviewPurchase()
+  }
+
+  const handleTabChange = (nextTab: 'browse' | 'create') => {
+    if (nextTab !== activeTab && activeTab === 'browse') {
+      void cancelActiveBrowsePreview()
+      setGenerateError(null)
+      setPreviewUrl(null)
+      resetPostPreviewPurchase()
+    }
+
+    setActiveTab(nextTab)
+  }
+
   const handleImageSelect = (file: File, preview: string, uploadedUrl?: string) => {
+    void cancelActiveBrowsePreview()
     setSelectedImage({ file, preview, uploadedUrl })
     setGenerateError(null)
     setCustomGenerateError(null)
+    setSelectedWallpaper(null)
     resetPostPreviewPurchase()
     setPreviewUrl(null)
     // Pre-fetch catalog during upload for better UX
-    fetchCatalog({ styles: selectedStyles, feels: selectedFeels })
+    fetchCatalog({ collectionHandle: selectedChildCollection ?? selectedParentCollection })
   }
 
   const fetchCatalog = async ({
-    styles = selectedStyles,
-    feels = selectedFeels,
+    collectionHandle = selectedChildCollection ?? selectedParentCollection,
     force = false,
   }: {
-    styles?: string[]
-    feels?: string[]
+    collectionHandle?: string | null
     force?: boolean
   } = {}) => {
-    const normalizedStyles = [...styles].sort()
-    const normalizedFeels = [...feels].sort()
     const requestKey = JSON.stringify({
-      styles: normalizedStyles,
-      feels: normalizedFeels,
+      collection: collectionHandle,
     })
 
     if (!force && lastCatalogRequestKeyRef.current === requestKey && catalogData.length > 0) {
@@ -681,13 +733,10 @@ export default function Home() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-      // Build query params based on current filters
+      // Build query params based on current taxonomy selection
       const params = new URLSearchParams()
-      if (normalizedStyles.length > 0) {
-        normalizedStyles.forEach(style => params.append('style', style))
-      }
-      if (normalizedFeels.length > 0) {
-        normalizedFeels.forEach(feel => params.append('feel', feel))
+      if (collectionHandle) {
+        params.set('collection', collectionHandle)
       }
 
       const url = `${apiUrl}/api/catalog/products${params.toString() ? `?${params.toString()}` : ''}`
@@ -709,7 +758,7 @@ export default function Home() {
         handle: product.handle,
         name: product.title || product.name,
         title: product.title,
-        category: product.appCategories?.[0] || product.shopifyCollections?.[0] || 'default',
+        category: activeCatalogLabel || getCollectionDisplayName(product.shopifyCollections?.[0]),
         appCategories: product.appCategories || [],
         thumbnail_url: product.image || '',
         image: product.image,
@@ -719,8 +768,6 @@ export default function Home() {
         shopifyCollections: product.shopifyCollections || [],
         tags: product.tags || [],
         available: product.available !== false,
-        styleLabels: product.styleLabels || [],
-        feelLabels: product.feelLabels || []
       }))
 
       setCatalogData(normalizedDesigns)
@@ -740,7 +787,11 @@ export default function Home() {
   }
 
   const handleWallpaperSelect = (design: WallpaperDesign) => {
+    void cancelActiveBrowsePreview()
     setSelectedWallpaper(design)
+    setPreviewUrl(null)
+    setGenerateError(null)
+    resetPostPreviewPurchase()
   }
 
   const handleGeneratePreview = async () => {
@@ -749,47 +800,79 @@ export default function Home() {
       return
     }
 
+    if (activeBrowsePreviewJobRef.current) {
+      await cancelActiveBrowsePreview()
+    }
+
     setIsGenerating(true)
     setGenerateError(null)
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/ai-generate-preview`, {
+      const response = await fetch(`${apiUrl}/api/preview-jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: 'room_preview',
           image_url: selectedImage.uploadedUrl,
           wallpaper_id: selectedWallpaper.id,
           quality: previewQuality,
         })
       })
 
-      // Parse response body first to get actual error details
       const data = await response.json().catch(() => null)
 
       if (!response.ok) {
-        // Use backend error detail if available
         const errorMsg = data?.detail || data?.error || 'Preview generation failed'
         throw new Error(errorMsg)
       }
 
-      // Check if this is a fallback response (AI generation failed)
-      if (data.fallback) {
-        // Extract meaningful error from backend
-        const errorDetails = data.error || 'AI service temporarily unavailable'
-        setGenerateError(
-          `AI service is currently busy. ${errorDetails.includes('503') ? 'The service is experiencing high demand - please try again in a few moments.' : errorDetails}`
-        )
-        return
+      if (!data?.job_id) {
+        throw new Error('Failed to create preview job')
       }
 
-      if (data.success && data.preview_url) {
-        setPreviewUrl(data.preview_url)
-      } else {
-        throw new Error(data.error || 'Preview generation failed. Please try again.')
-      }
+      const currentJobId = data.job_id as string
+      activeBrowsePreviewJobRef.current = currentJobId
+
+      pollJobStatus(
+        currentJobId,
+        (result) => {
+          if (activeBrowsePreviewJobRef.current !== currentJobId) {
+            return
+          }
+
+          activeBrowsePreviewJobRef.current = null
+          cleanupPolling()
+          setIsGenerating(false)
+
+          if (result.result?.preview_url) {
+            setPreviewUrl(result.result.preview_url)
+          } else {
+            setGenerateError('Preview generation failed. Please try again.')
+          }
+        },
+        (error) => {
+          if (activeBrowsePreviewJobRef.current !== currentJobId) {
+            return
+          }
+
+          activeBrowsePreviewJobRef.current = null
+          cleanupPolling()
+          setIsGenerating(false)
+          setGenerateError(error || 'Preview generation failed. Please try again.')
+        },
+        () => {
+          if (activeBrowsePreviewJobRef.current !== currentJobId) {
+            return
+          }
+
+          activeBrowsePreviewJobRef.current = null
+          cleanupPolling()
+          setIsGenerating(false)
+        }
+      )
 
     } catch (err: any) {
       // Provide user-friendly error messages
@@ -799,10 +882,9 @@ export default function Home() {
         userMessage = 'Cannot connect to server. Please check your internet connection.'
       }
 
+      setIsGenerating(false)
       setGenerateError(userMessage)
       console.error('Generation error:', err)
-    } finally {
-      setIsGenerating(false)
     }
   }
 
@@ -815,14 +897,13 @@ export default function Home() {
     ...item,
     icon: processIcons[index],
   }))
-  const activeFilterCount = selectedStyles.length + selectedFeels.length
   const localeOptions = SUPPORTED_LOCALES.map((option) => ({
     value: option.code,
     label: option.nativeLabel,
   }))
   const currencyOptions = SUPPORTED_CURRENCIES.map((option) => ({
     value: option.code,
-    label: option.label,
+    label: formatCurrencySelectorLabel(option.code),
   }))
 
   return (
@@ -898,8 +979,8 @@ export default function Home() {
               <p>
                 {interpolate(messages.selectors.promptBody, {
                   language: suggestedLocaleConfig.promptLabel,
-                  currency: suggestedLocaleConfig.defaultCurrency,
-                })}
+                  currency: formatCurrencySelectorLabel(suggestedLocaleConfig.defaultCurrency),
+                }).replace('USD', formatCurrencySelectorLabel(DEFAULT_CURRENCY))}
               </p>
               <div className="locale-prompt-actions">
                 <button
@@ -909,7 +990,7 @@ export default function Home() {
                 >
                   {interpolate(messages.selectors.useLocal, {
                     language: suggestedLocaleConfig.promptLabel,
-                    currency: suggestedLocaleConfig.defaultCurrency,
+                    currency: formatCurrencySelectorLabel(suggestedLocaleConfig.defaultCurrency),
                   })}
                 </button>
                 <button
@@ -917,7 +998,7 @@ export default function Home() {
                   className="ghost-btn"
                   onClick={handleKeepEnglish}
                 >
-                  {messages.selectors.keepEnglish}
+                  {messages.selectors.keepEnglish.replace('USD', formatCurrencySelectorLabel(DEFAULT_CURRENCY))}
                 </button>
               </div>
               <p className="locale-prompt-note">{messages.selectors.changeLater}</p>
@@ -990,13 +1071,13 @@ export default function Home() {
             <ErrorBoundary>
               <div className="luxury-tabs">
                 <button
-                  onClick={() => setActiveTab('browse')}
+                  onClick={() => handleTabChange('browse')}
                   className={`luxury-tab ${activeTab === 'browse' ? 'is-active' : ''}`}
                 >
                   {messages.visualizer.tabs.browse}
                 </button>
                 <button
-                  onClick={() => setActiveTab('create')}
+                  onClick={() => handleTabChange('create')}
                   className={`luxury-tab ${activeTab === 'create' ? 'is-active' : ''}`}
                 >
                   {messages.visualizer.tabs.create}
@@ -1010,32 +1091,27 @@ export default function Home() {
               {activeTab === 'browse' && (
                 <ErrorBoundary>
                   <div className="space-y-6">
-                    {/* Style & Feel Filter */}
+                    {/* Catalog Taxonomy Filter */}
                     <div className="step-section">
-                      <h3 className="step-title">{messages.visualizer.chooseStyleFeel}</h3>
-                      <StyleFeelFilter
-                      selectedStyles={selectedStyles}
-                      selectedFeels={selectedFeels}
-                      onStyleSelect={handleStyleSelect}
-                      onFeelSelect={handleFeelSelect}
-                    />
-                  </div>
+                      <h3 className="step-title">{messages.visualizer.chooseCatalog}</h3>
+                      <CategoryFilter
+                        selectedParentHandle={selectedParentCollection}
+                        selectedChildHandle={selectedChildCollection}
+                        onSelectionChange={handleCatalogSelectionChange}
+                      />
+                    </div>
 
                   {/* Wallpaper Grid */}
                   <div className="step-section" id="wallpaper-grid">
-                    <h3 className="step-title">
-                      {activeFilterCount > 0
-                        ? interpolate(messages.visualizer.chooseWallpaperFiltered, {
-                          count: activeFilterCount,
-                          filterWord: activeFilterCount > 1 ? messages.common.filtersOther : messages.common.filtersOne,
-                        })
-                        : messages.visualizer.chooseWallpaper}
-                    </h3>
+                    <h3 className="step-title">{messages.visualizer.chooseWallpaper}</h3>
+                    {activeCatalogLabel && (
+                      <p className="catalog-selection-note">{activeCatalogLabel}</p>
+                    )}
                     <WallpaperGrid
                       onWallpaperSelect={handleWallpaperSelect}
                       selectedId={selectedWallpaper?.id}
-                      selectedStyles={selectedStyles}
-                      selectedFeels={selectedFeels}
+                      selectedCollection={selectedChildCollection ?? selectedParentCollection}
+                      activeCollectionLabel={activeCatalogLabel}
                       preFetchedData={catalogData}
                       isLoading={catalogLoading}
                       error={catalogError}

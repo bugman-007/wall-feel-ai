@@ -26,6 +26,7 @@ class JobStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class JobType(str, Enum):
@@ -58,7 +59,7 @@ class PreviewJob:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "result": self.result if self.status == JobStatus.COMPLETED else None,
-            "error_message": self.error_message if self.status == JobStatus.FAILED else None,
+            "error_message": self.error_message if self.status in (JobStatus.FAILED, JobStatus.CANCELLED) else None,
         }
 
 
@@ -132,6 +133,7 @@ class JobQueue:
 
     def __init__(self):
         self._jobs: Dict[str, PreviewJob] = {}
+        self._tasks: Dict[str, asyncio.Task] = {}
         self._lock = threading.Lock()
         self._concurrency = ConcurrencyLimiter()
 
@@ -160,12 +162,13 @@ class JobQueue:
         with self._lock:
             expired_ids = []
             for job_id, job in self._jobs.items():
-                if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
                     if (current_time - job.updated_at) > self.JOB_TTL_SECONDS:
                         expired_ids.append(job_id)
 
             for job_id in expired_ids:
                 del self._jobs[job_id]
+                self._tasks.pop(job_id, None)
 
             if expired_ids:
                 logger.info(f"Cleaned up {len(expired_ids)} old jobs")
@@ -179,8 +182,9 @@ class JobQueue:
                 )
                 to_remove = len(self._jobs) - self.MAX_JOBS
                 for job in sorted_jobs[:to_remove]:
-                    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
                         del self._jobs[job.id]
+                        self._tasks.pop(job.id, None)
 
     def create_job(
         self,
@@ -206,6 +210,40 @@ class JobQueue:
         """Get job by ID."""
         with self._lock:
             return self._jobs.get(job_id)
+
+    def register_task(self, job_id: str, task: asyncio.Task):
+        """Register the asyncio task processing a given job."""
+        with self._lock:
+            self._tasks[job_id] = task
+
+    def clear_task(self, job_id: str):
+        """Remove the tracked task for a given job."""
+        with self._lock:
+            self._tasks.pop(job_id, None)
+
+    def cancel_job(self, job_id: str) -> Optional[PreviewJob]:
+        """Cancel an in-flight or queued job."""
+        task_to_cancel: Optional[asyncio.Task] = None
+
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return None
+
+            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+                return job
+
+            job.status = JobStatus.CANCELLED
+            job.updated_at = time.time()
+            job.error_message = "Generation cancelled."
+            job.raw_error = "Cancelled by client"
+            task_to_cancel = self._tasks.get(job_id)
+
+        if task_to_cancel and not task_to_cancel.done():
+            task_to_cancel.cancel()
+
+        logger.info(f"Cancelled job {job_id}")
+        return self.get_job(job_id)
 
     def update_job_status(
         self,

@@ -4,7 +4,7 @@ Catalog Normalizer
 Transforms raw Shopify data into app-facing normalized structures.
 Handles:
 - Product normalization to consistent schema
-- Category grouping (Style, Space, Audience, Theme, Custom)
+- Catalog taxonomy for browse navigation
 - Material extraction from variants
 - Handling the "Matarial" typo in Shopify data
 - Multi-path product discoverability
@@ -17,6 +17,46 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+
+ORIGINAL_SITE_TAXONOMY: List[Dict[str, Any]] = [
+    {
+        "title": "Business",
+        "handle": "business",
+        "children": [
+            {"title": "School/Daycare", "handle": "school-daycare"},
+            {"title": "Hotel", "handle": "hotel"},
+            {"title": "Restaurant", "handle": "restaurant"},
+            {"title": "Beauty salon", "handle": "abstract-design-copy"},
+            {"title": "Healthcare", "handle": "healthcare"},
+            {"title": "Fast Food", "handle": "fast-food"},
+            {"title": "Barber Shop", "handle": "barber-shop"},
+            {"title": "Wooden Slats", "handle": "wooden-slats"},
+            {"title": "Artificial Flower", "handle": "artificial-flower"},
+        ],
+    },
+    {
+        "title": "Homes",
+        "handle": "homes",
+        "children": [
+            {"title": "Marble", "handle": "marble"},
+            {"title": "Modern", "handle": "modern"},
+            {"title": "Agate", "handle": "agate"},
+            {"title": "Geometric", "handle": "geometric"},
+        ],
+    },
+    {
+        "title": "Children",
+        "handle": "children",
+        "children": [
+            {"title": "Nature", "handle": "nature"},
+            {"title": "Animal", "handle": "animal"},
+            {"title": "Educational", "handle": "educational"},
+            {"title": "Dreamland", "handle": "dreamland"},
+            {"title": "Motivation", "handle": "motivation"},
+        ],
+    },
+]
 
 
 # Use Shopify COLLECTION HANDLES here, not display titles.
@@ -271,29 +311,40 @@ def product_to_dict(product: NormalizedProduct) -> Dict[str, Any]:
     }
 
 
-def build_category_groups(collections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    shopify_by_handle = {
-        _normalize_handle(collection.get("handle", "")): collection.get("title", "")
-        for collection in collections
+def build_category_groups(collections: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    available_handles = {
+        _normalize_handle(collection.get("handle", ""))
+        for collection in (collections or [])
         if collection.get("handle")
     }
 
-    groups: List[Dict[str, Any]] = []
+    if available_handles:
+        expected_handles = {
+            entry["handle"]
+            for group in ORIGINAL_SITE_TAXONOMY
+            for entry in [group, *group["children"]]
+        }
+        missing_handles = sorted(expected_handles - available_handles)
+        if missing_handles:
+            logger.warning(
+                "Original-site taxonomy contains handles missing from Shopify collections: %s",
+                ", ".join(missing_handles),
+            )
 
-    for group_name in ["Style", "Space", "Audience", "Theme", "Custom"]:
-        display_categories = [
-            shopify_by_handle[handle]
-            for handle in CATEGORY_GROUP_MAPPING.get(group_name, [])
-            if handle in shopify_by_handle
-        ]
-
-        if display_categories:
-            groups.append({
-                "name": group_name,
-                "categories": sorted(display_categories),
-            })
-
-    return groups
+    return [
+        {
+            "title": group["title"],
+            "handle": group["handle"],
+            "children": [
+                {
+                    "title": child["title"],
+                    "handle": child["handle"],
+                }
+                for child in group["children"]
+            ],
+        }
+        for group in ORIGINAL_SITE_TAXONOMY
+    ]
 
 
 def normalize_collection(shopify_collection: Dict[str, Any]) -> Dict[str, Any]:

@@ -12,6 +12,7 @@ export interface PostPreviewMaterial {
   finishLabel: string
   features: string[]
   swatchImage: string
+  swatchObjectPosition?: string
 }
 
 export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
@@ -21,7 +22,8 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#EPS 0101',
     ratePerSqmUsd: 29.99,
     finishLabel: 'Easy Peel & Stick',
-    swatchImage: '/material-swatches/easy-peel-stick.webp',
+    swatchImage: '/material-swatches/easy-peel-stick.jpeg',
+    swatchObjectPosition: 'center center',
     features: [
       'PVC-Free Vinyl Material',
       'Waterproof Surface',
@@ -35,7 +37,8 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#PM 0101',
     ratePerSqmUsd: 39.99,
     finishLabel: 'Premium Matte',
-    swatchImage: '/material-swatches/premium-matte.webp',
+    swatchImage: '/material-swatches/premium-matte.jpeg',
+    swatchObjectPosition: 'center center',
     features: [
       'Lightweight Fabric Material',
       'Installed Using Wallpaper Paste',
@@ -49,7 +52,8 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     code: '#P3D.T 0101',
     ratePerSqmUsd: 49.99,
     finishLabel: 'Premium 3D Textured',
-    swatchImage: '/material-swatches/premium-textured-3d.webp',
+    swatchImage: '/material-swatches/premium-textured-3d.jpeg',
+    swatchObjectPosition: 'center center',
     features: [
       'Heavy, Thick Fabric Material',
       'Installed Using Wallpaper Paste',

@@ -8,6 +8,7 @@ import {
   type PostPreviewMaterialId,
 } from './postPreviewMaterials'
 import { useLocalization } from '../contexts/LocalizationContext'
+import { formatCurrencySelectorLabel } from '../lib/localization'
 
 interface PostPreviewMaterialSelectionProps {
   previewImageUrl: string
@@ -96,6 +97,7 @@ export default function PostPreviewMaterialSelection({
                       alt={`${materialCopy?.name || material.name} material sample`}
                       fill
                       className="material-swatch-image"
+                      style={{ objectPosition: material.swatchObjectPosition || 'center center' }}
                       sizes="(max-width: 980px) 100vw, (max-width: 1120px) 50vw, 28vw"
                     />
                   </div>
@@ -262,7 +264,7 @@ export default function PostPreviewMaterialSelection({
             <span>{messages.materials.addToCart}</span>
           </button>
           <p className="material-selection-footnote">
-            {messages.materials.footnote.replace('{currency}', currency)}
+            {messages.materials.footnote.replace('{currency}', formatCurrencySelectorLabel(currency))}
           </p>
           {cartNotice && <p className="material-selection-notice">{cartNotice}</p>}
         </div>

@@ -236,14 +236,10 @@ def get_catalog():
 @app.get("/api/catalog/groups")
 async def get_category_groups():
     """
-    Get grouped categories for browsing.
+    Get the original-site catalog taxonomy for browsing.
 
-    Returns categories organized by type:
-    - Style: Modern, Marble, Geometric, etc.
-    - Space: Homes, Hotel, Restaurant, etc.
-    - Audience: Children, Educational, etc.
-    - Theme: Animal, Motivation, etc.
-    - Custom: Custom designs
+    Returns explicit parent categories and ordered subcategories with
+    stable display titles and Shopify collection handles.
 
     Cache: 10 minutes (categories change infrequently)
     """
@@ -256,11 +252,7 @@ async def get_category_groups():
         return {"groups": _category_groups_cache}
 
     try:
-        client = get_shopify_client()
-        collections = await client.get_collections(first=250)
-
-        # Build grouped categories
-        groups = build_category_groups(collections)
+        groups = build_category_groups()
         _category_groups_cache = groups
         _category_groups_timestamp = current_time
 
@@ -1173,7 +1165,8 @@ async def create_preview_job(request: PreviewJobCreate):
         job = queue.create_job(job_type=job_type, input_payload=input_payload)
 
         # Start background processing
-        asyncio.create_task(_process_job(job.id))
+        task = asyncio.create_task(_process_job(job.id))
+        queue.register_task(job.id, task)
 
         logger.info(f"Created preview job {job.id} type={job_type.value}")
 
@@ -1201,10 +1194,10 @@ async def get_preview_job(job_id: str):
         {
             "id": "...",
             "type": "room_preview",
-            "status": "processing",  # queued | processing | completed | failed
+            "status": "processing",  # queued | processing | completed | failed | cancelled
             "retry_count": 0,
             "result": { ... }  # Only when status=completed
-            "error_message": "..."  # Only when status=failed
+            "error_message": "..."  # Only when status=failed/cancelled
         }
     """
     queue = await get_job_queue()
@@ -1225,6 +1218,23 @@ async def get_preview_job(job_id: str):
             response["estimated_wait_seconds"] = 10  # ~10s for texture
 
     return response
+
+
+@app.delete("/api/preview-jobs/{job_id}")
+async def cancel_preview_job(job_id: str):
+    """
+    Cancel a queued or processing preview job.
+
+    Used by the frontend when the user changes catalog selection, wallpaper
+    choice, or otherwise abandons the current generation.
+    """
+    queue = await get_job_queue()
+    job = queue.cancel_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return job.to_dict()
 
 
 async def _process_job(job_id: str):
@@ -1248,9 +1258,18 @@ async def _process_job(job_id: str):
     slot_acquired = False
 
     try:
+        if job.status == JobStatus.CANCELLED:
+            logger.info(f"Job {job_id} was cancelled before processing started")
+            return
+
         # Wait in queued status until a slot is available.
         await concurrency.acquire(job.type)
         slot_acquired = True
+
+        current_job = queue.get_job(job_id)
+        if not current_job or current_job.status == JobStatus.CANCELLED:
+            logger.info(f"Job {job_id} was cancelled before generation began")
+            return
 
         # Only mark the job as processing once it can actually start work.
         queue.update_job_status(job_id, JobStatus.PROCESSING)
@@ -1262,6 +1281,11 @@ async def _process_job(job_id: str):
             result = await _process_texture_job(job)
 
         # Handle result
+        current_job = queue.get_job(job_id)
+        if not current_job or current_job.status == JobStatus.CANCELLED:
+            logger.info(f"Job {job_id} was cancelled after generation result returned")
+            return
+
         if result and result.get("success"):
             queue.update_job_status(
                 job_id,
@@ -1282,6 +1306,16 @@ async def _process_job(job_id: str):
             )
             logger.warning(f"Job {job_id} failed: {error_msg}")
 
+    except asyncio.CancelledError:
+        logger.info(f"Job {job_id} cancelled during processing")
+        current_job = queue.get_job(job_id)
+        if current_job and current_job.status != JobStatus.CANCELLED:
+            queue.update_job_status(
+                job_id,
+                JobStatus.CANCELLED,
+                error_message="Generation cancelled.",
+                raw_error="Cancelled by client",
+            )
     except Exception as e:
         logger.error(f"Job {job_id} processing error: {e}", exc_info=True)
 
@@ -1299,6 +1333,7 @@ async def _process_job(job_id: str):
             raw_error=error_str
         )
     finally:
+        queue.clear_task(job_id)
         if slot_acquired:
             concurrency.release(job.type)
 

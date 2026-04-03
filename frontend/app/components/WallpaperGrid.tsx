@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { useLocalization } from '../contexts/LocalizationContext'
+import { getCollectionDisplayName } from '../lib/catalogTaxonomy'
 
 interface Material {
   variantId: string
@@ -33,9 +34,8 @@ interface WallpaperDesign {
 interface WallpaperGridProps {
   onWallpaperSelect: (design: WallpaperDesign) => void
   selectedId?: string | null
-  selectedCategory?: string | null
-  selectedStyles?: string[]
-  selectedFeels?: string[]
+  selectedCollection?: string | null
+  activeCollectionLabel?: string | null
   // Pre-fetch props (optional - if provided, component uses pre-fetched data)
   preFetchedData?: WallpaperDesign[]
   isLoading?: boolean
@@ -46,9 +46,8 @@ interface WallpaperGridProps {
 export default function WallpaperGrid({
   onWallpaperSelect,
   selectedId,
-  selectedCategory,
-  selectedStyles,
-  selectedFeels,
+  selectedCollection,
+  activeCollectionLabel,
   preFetchedData,
   isLoading: parentLoading,
   error: parentError,
@@ -70,14 +69,14 @@ export default function WallpaperGrid({
 
   useEffect(() => {
     setCurrentPage(0)
-  }, [selectedCategory, selectedStyles, selectedFeels, preFetchedData])
+  }, [selectedCollection, preFetchedData])
 
   useEffect(() => {
     if (!usePreFetch) {
       fetchCatalog()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedStyles, selectedFeels, usePreFetch])
+  }, [selectedCollection, usePreFetch])
 
   const fetchCatalog = async () => {
     try {
@@ -86,14 +85,8 @@ export default function WallpaperGrid({
 
       // Build query params
       const params = new URLSearchParams()
-      if (selectedCategory) {
-        params.set('category', selectedCategory)
-      }
-      if (selectedStyles && selectedStyles.length > 0) {
-        selectedStyles.forEach(style => params.append('style', style))
-      }
-      if (selectedFeels && selectedFeels.length > 0) {
-        selectedFeels.forEach(feel => params.append('feel', feel))
+      if (selectedCollection) {
+        params.set('collection', selectedCollection)
       }
 
       const url = `${apiUrl}/api/catalog/products${params.toString() ? `?${params.toString()}` : ''}`
@@ -112,7 +105,7 @@ export default function WallpaperGrid({
         handle: product.handle,
         name: product.title || product.name,
         title: product.title,
-        category: product.appCategories?.[0] || product.shopifyCollections?.[0] || 'default',
+        category: activeCollectionLabel || getCollectionDisplayName(product.shopifyCollections?.[0]),
         appCategories: product.appCategories || [],
         thumbnail_url: product.image || '',
         image: product.image,
@@ -122,8 +115,6 @@ export default function WallpaperGrid({
         shopifyCollections: product.shopifyCollections || [],
         tags: product.tags || [],
         available: product.available !== false,
-        styleLabels: product.styleLabels || [],
-        feelLabels: product.feelLabels || []
       }))
 
       setFetchedDesigns(normalizedDesigns)
@@ -223,8 +214,8 @@ export default function WallpaperGrid({
               <p className="text-sm font-medium transition-colors wallpaper-card-title">
                 {design.name}
               </p>
-              <p className="text-xs capitalize wallpaper-card-category">
-                {design.category}
+              <p className="text-xs wallpaper-card-category">
+                {activeCollectionLabel || design.category}
               </p>
             </div>
           </button>
