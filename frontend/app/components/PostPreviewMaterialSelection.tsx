@@ -219,7 +219,21 @@ export default function PostPreviewMaterialSelection({
             onClick={onAddToCart}
             disabled={!isReadyForCart}
           >
-            Add to Cart
+            <svg
+              className="material-select-btn-icon"
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="9" cy="19" r="1.7" />
+              <circle cx="18" cy="19" r="1.7" />
+              <path d="M3 5h2.2l2.1 9.4a1 1 0 0 0 .98.78h8.96a1 1 0 0 0 .97-.76L20.2 8H7.1" />
+            </svg>
+            <span>Add to Cart</span>
           </button>
           <p className="material-selection-footnote">
             Estimates are shown in GBP and based on the selected wall area.

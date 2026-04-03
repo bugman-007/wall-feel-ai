@@ -1008,12 +1008,22 @@ body {
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 14px 28px rgba(120, 88, 45, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 .material-select-btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
   box-shadow: none;
+}
+
+.material-select-btn-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
 }
 
 .material-selection-footnote,
