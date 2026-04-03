@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface Material {
   variantId: string
@@ -53,6 +54,7 @@ export default function WallpaperGrid({
   error: parentError,
   onRetry
 }: WallpaperGridProps) {
+  const { messages } = useLocalization()
   const [fetchedDesigns, setFetchedDesigns] = useState<WallpaperDesign[]>([])
   const [fetchLoading, setFetchLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -127,7 +129,7 @@ export default function WallpaperGrid({
       setFetchedDesigns(normalizedDesigns)
       setFetchError(null)
     } catch (err) {
-      setFetchError('Failed to load wallpaper designs. Please try again.')
+      setFetchError(messages.wallpaperGrid.failedToLoad)
       console.error('Catalog fetch error:', err)
     } finally {
       setFetchLoading(false)
@@ -157,7 +159,7 @@ export default function WallpaperGrid({
           onClick={onRetry || fetchCatalog}
           className="mt-3 text-sm font-medium btn-secondary py-2 px-4"
         >
-          Try again
+          {messages.wallpaperGrid.tryAgain}
         </button>
       </div>
     )
@@ -166,7 +168,7 @@ export default function WallpaperGrid({
   if (designs.length === 0) {
     return (
       <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
-        <p>No wallpaper designs available.</p>
+        <p>{messages.wallpaperGrid.noDesigns}</p>
       </div>
     )
   }
@@ -237,17 +239,17 @@ export default function WallpaperGrid({
             disabled={currentPage === 0}
             className={`pagination-btn ${currentPage === 0 ? 'is-disabled' : ''}`}
           >
-            Previous
+            {messages.wallpaperGrid.previous}
           </button>
           <span className="text-sm pagination-status">
-            Page {currentPage + 1} of {totalPages}
+            {messages.common.page} {currentPage + 1} {messages.common.of} {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={currentPage === totalPages - 1}
             className={`pagination-btn ${currentPage === totalPages - 1 ? 'is-disabled' : ''}`}
           >
-            Next
+            {messages.wallpaperGrid.next}
           </button>
         </div>
       )}

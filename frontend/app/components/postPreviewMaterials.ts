@@ -8,7 +8,7 @@ export interface PostPreviewMaterial {
   id: PostPreviewMaterialId
   name: string
   code: string
-  ratePerSqm: number
+  ratePerSqmUsd: number
   finishLabel: string
   features: string[]
   swatchImage: string
@@ -19,7 +19,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     id: 'easy-peel-stick',
     name: 'Easy Peel & Stick',
     code: '#EPS 0101',
-    ratePerSqm: 29.99,
+    ratePerSqmUsd: 29.99,
     finishLabel: 'Easy Peel & Stick',
     swatchImage: '/material-swatches/easy-peel-stick.webp',
     features: [
@@ -33,7 +33,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     id: 'premium-matte',
     name: 'Premium Matte',
     code: '#PM 0101',
-    ratePerSqm: 39.99,
+    ratePerSqmUsd: 39.99,
     finishLabel: 'Premium Matte',
     swatchImage: '/material-swatches/premium-matte.webp',
     features: [
@@ -47,7 +47,7 @@ export const POST_PREVIEW_MATERIALS: PostPreviewMaterial[] = [
     id: 'premium-textured-3d',
     name: 'Premium Textured 3D',
     code: '#P3D.T 0101',
-    ratePerSqm: 49.99,
+    ratePerSqmUsd: 49.99,
     finishLabel: 'Premium 3D Textured',
     swatchImage: '/material-swatches/premium-textured-3d.webp',
     features: [

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface ImageUploadProps {
   onImageSelect: (file: File, preview: string, uploadedUrl?: string) => void
@@ -14,6 +15,7 @@ const CameraCapture = dynamic(() => import('./CameraCapture'), {
 })
 
 export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
+  const { messages } = useLocalization()
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string>('')
@@ -81,7 +83,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       onImageSelect(file, previewUrl, data.url)
 
     } catch (err: any) {
-      setError(err.message || 'Failed to upload image. Please try again.')
+      setError(err.message || messages.upload.uploadFailed)
       console.error('Upload error:', err)
     } finally {
       clearProgressTimers()
@@ -91,7 +93,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
         progressResetTimeoutRef.current = null
       }, 1000)
     }
-  }, [clearProgressTimers, onImageSelect])
+  }, [clearProgressTimers, messages.upload.uploadFailed, onImageSelect])
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setError(null)
@@ -100,11 +102,11 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
     if (rejectedFiles.length > 0) {
       const rejection = rejectedFiles[0]
       if (rejection.errors[0]?.code === 'file-too-large') {
-        setError('File is too large. Maximum size is 10MB.')
+        setError(messages.upload.uploadTooLarge)
       } else if (rejection.errors[0]?.code === 'file-invalid-type') {
-        setError('Invalid file type. Please upload a JPEG or PNG image.')
+        setError(messages.upload.uploadInvalidType)
       } else {
-        setError('Failed to upload file. Please try again.')
+        setError(messages.upload.uploadFailed)
       }
       return
     }
@@ -126,7 +128,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
       // Upload to backend
       uploadToBackend(file, previewUrl)
     }
-  }, [preview, uploadToBackend])
+  }, [messages.upload.uploadFailed, messages.upload.uploadInvalidType, messages.upload.uploadTooLarge, preview, uploadToBackend])
 
   const handleCameraCapture = (file: File) => {
     setFileName(file.name)
@@ -170,14 +172,14 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
           <div className="upload-stage-header">
             <div className="upload-stage-brand brand-lockup">
               <span className="brand-logo" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="brand-mark">WALLFEEL</span>
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+              <span className="brand-mark">WallFeel.</span>
             </div>
-            <p className="upload-stage-kicker">Upload Your Vision. We Design Luxury Around It.</p>
+            <p className="upload-stage-kicker">{messages.upload.stagePrompt}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 upload-split">
@@ -218,13 +220,13 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                 </div>
 
                 {isDragActive ? (
-                  <p className="upload-panel-title">Drop your image here</p>
+                  <p className="upload-panel-title">{messages.upload.dropHere}</p>
                 ) : (
-                  <p className="upload-panel-title">Drag &amp; Drop or Click to Upload</p>
+                  <p className="upload-panel-title">{messages.upload.dragAndDrop}</p>
                 )}
 
-                <p className="upload-panel-copy">JPG, PNG up to 10MB</p>
-                <p className="upload-panel-footnote">Capture the full wall with good lighting for the most realistic preview.</p>
+                <p className="upload-panel-copy">{messages.upload.filesHint}</p>
+                <p className="upload-panel-footnote">{messages.upload.guidance}</p>
 
                 <div className="flex justify-center">
                   <Image
@@ -251,17 +253,16 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               }}
             >
               <div className="upload-camera-header">
-                <p className="upload-side-title">Capture Room Photo</p>
-                <p className="upload-side-copy">Use your camera to create a clean front-facing room image without leaving the flow.</p>
+                <p className="upload-side-title">{messages.upload.captureTitle}</p>
+                <p className="upload-side-copy">{messages.upload.captureCopy}</p>
               </div>
 
               <div className="upload-best-list">
-                <div className="upload-best-list-title">How to Get the Best Result</div>
+                <div className="upload-best-list-title">{messages.upload.bestResultsTitle}</div>
                 <ul>
-                  <li>Use a high-resolution room photo</li>
-                  <li>Capture the full wall perspective</li>
-                  <li>Avoid glare and harsh backlight</li>
-                  <li>Keep the camera steady and level</li>
+                  {messages.upload.bestResults.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
                 </ul>
               </div>
 
@@ -285,7 +286,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
                     setShowCamera(true)
                   }}
                 >
-                  Open Camera
+                  {messages.upload.openCamera}
                 </button>
               </div>
             </div>
@@ -304,14 +305,14 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
           <div className="upload-stage-header">
             <div className="upload-stage-brand brand-lockup">
               <span className="brand-logo" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="brand-mark">WALLFEEL</span>
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+              <span className="brand-mark">WallFeel.</span>
             </div>
-            <p className="upload-stage-kicker">Your room is ready for luxury design review.</p>
+            <p className="upload-stage-kicker">{messages.upload.stageReady}</p>
           </div>
 
           <div className="preview-stage-frame">
@@ -329,7 +330,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               <div className="absolute inset-0 flex items-center justify-center upload-preview-overlay">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 mx-auto mb-4 upload-spinner"></div>
-                  <p className="text-white font-medium">Uploading... {uploadProgress}%</p>
+                  <p className="text-white font-medium">{messages.upload.uploading} {uploadProgress}%</p>
                 </div>
               </div>
             )}
@@ -359,7 +360,7 @@ export default function ImageUpload({ onImageSelect }: ImageUploadProps) {
               disabled={uploading}
               className={`preview-remove-btn ${uploading ? 'is-disabled' : ''}`}
             >
-              Remove
+              {messages.common.remove}
             </button>
           </div>
 

@@ -7,6 +7,7 @@ import {
   type MeasurementUnit,
   type PostPreviewMaterialId,
 } from './postPreviewMaterials'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface PostPreviewMaterialSelectionProps {
   previewImageUrl: string
@@ -26,20 +27,6 @@ interface PostPreviewMaterialSelectionProps {
   onAddToCart: () => void
 }
 
-const formatPrice = (value: number) =>
-  new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat('en-GB', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-
 export default function PostPreviewMaterialSelection({
   previewImageUrl,
   selectedMaterialId,
@@ -57,6 +44,7 @@ export default function PostPreviewMaterialSelection({
   cartNotice,
   onAddToCart,
 }: PostPreviewMaterialSelectionProps) {
+  const { currency, formatNumber, formatPriceFromUsd, messages } = useLocalization()
   const selectedMaterial = POST_PREVIEW_MATERIALS.find((material) => material.id === selectedMaterialId) || null
   const isReadyForCart = Boolean(selectedMaterial && totalPrice !== null && areaSqm !== null && areaSqm > 0)
 
@@ -78,17 +66,16 @@ export default function PostPreviewMaterialSelection({
               <span />
               <span />
             </span>
-            <span className="material-brand-name">WALLFEEL</span>
+            <span className="material-brand-name">WallFeel.</span>
           </div>
-          <h3>Smart Material Selection</h3>
-          <p>
-            Explore our premium textured wall coverings, tailored for quality and style.
-          </p>
+          <h3>{messages.materials.title}</h3>
+          <p>{messages.materials.subtitle}</p>
         </div>
 
         <div className="material-card-grid">
           {POST_PREVIEW_MATERIALS.map((material) => {
-            const pricePerSqft = material.ratePerSqm / SQFT_PER_SQM
+            const materialCopy = messages.materials.materialMap[material.id]
+            const pricePerSqft = material.ratePerSqmUsd / SQFT_PER_SQM
             const isSelected = material.id === selectedMaterialId
 
             return (
@@ -98,15 +85,15 @@ export default function PostPreviewMaterialSelection({
                 onClick={() => onSelectMaterial(material.id)}
                 className={`material-card ${isSelected ? 'is-selected' : ''}`}
               >
-                <div className="material-card-cap">{material.finishLabel}</div>
+                <div className="material-card-cap">{materialCopy?.finishLabel || material.finishLabel}</div>
                 <div className="material-card-body">
-                  <h4>{material.name}</h4>
+                  <h4>{materialCopy?.name || material.name}</h4>
                   <p className="material-card-code">{material.code}</p>
 
                   <div className="material-swatch">
                     <Image
                       src={material.swatchImage}
-                      alt={`${material.name} material sample`}
+                      alt={`${materialCopy?.name || material.name} material sample`}
                       fill
                       className="material-swatch-image"
                       sizes="(max-width: 980px) 100vw, (max-width: 1120px) 50vw, 28vw"
@@ -114,14 +101,14 @@ export default function PostPreviewMaterialSelection({
                   </div>
 
                   <ul className="material-feature-list">
-                    {material.features.map((feature) => (
+                    {(materialCopy?.features || material.features).map((feature) => (
                       <li key={feature}>{feature}</li>
                     ))}
                   </ul>
 
                   <div className="material-rate-block">
-                    <p>{formatPrice(material.ratePerSqm)} / sqm</p>
-                    <p>{formatPrice(pricePerSqft)} / sqft</p>
+                    <p>{formatPriceFromUsd(material.ratePerSqmUsd)} / {messages.materials.unitSqm}</p>
+                    <p>{formatPriceFromUsd(pricePerSqft)} / {messages.materials.unitSqft}</p>
                   </div>
 
                   <p className="material-card-code material-card-code-bottom">{material.code}</p>
@@ -134,38 +121,38 @@ export default function PostPreviewMaterialSelection({
         <div className="material-pricing-panel">
           <div className="material-pricing-head">
             <div>
-              <p className="material-pricing-kicker">Wall Dimensions</p>
-              <h4>Calculate your wall area and total estimate</h4>
+              <p className="material-pricing-kicker">{messages.materials.pricingKicker}</p>
+              <h4>{messages.materials.pricingTitle}</h4>
             </div>
 
-            <div className="material-unit-toggle" role="tablist" aria-label="Measurement unit">
+            <div className="material-unit-toggle" role="tablist" aria-label={messages.materials.measurementAria}>
               <button
                 type="button"
                 onClick={() => onMeasurementUnitChange('metric')}
                 className={measurementUnit === 'metric' ? 'is-active' : ''}
               >
-                m × m
+                {messages.materials.unitMetric}
               </button>
               <button
                 type="button"
                 onClick={() => onMeasurementUnitChange('imperial')}
                 className={measurementUnit === 'imperial' ? 'is-active' : ''}
               >
-                ft × ft
+                {messages.materials.unitImperial}
               </button>
               <button
                 type="button"
                 onClick={() => onMeasurementUnitChange('inch')}
                 className={measurementUnit === 'inch' ? 'is-active' : ''}
               >
-                in × in
+                {messages.materials.unitInches}
               </button>
             </div>
           </div>
 
           <div className="material-input-grid">
             <label className="material-input-card">
-              <span>Wall width</span>
+              <span>{messages.materials.wallWidth}</span>
               <div className="material-input-wrap">
                 <input
                   type="number"
@@ -188,7 +175,7 @@ export default function PostPreviewMaterialSelection({
             </label>
 
             <label className="material-input-card">
-              <span>Wall height</span>
+              <span>{messages.materials.wallHeight}</span>
               <div className="material-input-wrap">
                 <input
                   type="number"
@@ -213,30 +200,40 @@ export default function PostPreviewMaterialSelection({
 
           <div className="material-summary-grid">
             <div className="material-summary-card">
-              <span>Selected material</span>
-              <strong>{selectedMaterial ? selectedMaterial.name : 'Choose a material card above'}</strong>
+              <span>{messages.materials.selectedMaterial}</span>
+              <strong>
+                {selectedMaterial
+                  ? messages.materials.materialMap[selectedMaterial.id]?.name || selectedMaterial.name
+                  : messages.materials.chooseMaterial}
+              </strong>
             </div>
             <div className="material-summary-card">
-              <span>Wall area</span>
+              <span>{messages.materials.wallArea}</span>
               <strong>
                 {areaDisplay !== null
-                  ? `${formatNumber(areaDisplay)} ${areaDisplayUnit}`
-                  : `Enter width and height in ${
+                  ? `${formatNumber(areaDisplay)} ${messages.materials[areaDisplayUnit === 'sqm' ? 'unitSqm' : areaDisplayUnit === 'sqft' ? 'unitSqft' : 'unitSqin']}`
+                  : `${
                     measurementUnit === 'metric'
-                      ? 'meters'
+                      ? messages.materials.enterMetric
                       : measurementUnit === 'imperial'
-                        ? 'feet'
-                        : 'inches'
+                        ? messages.materials.enterImperial
+                        : messages.materials.enterInches
                   }`}
               </strong>
               <p>
-                {areaSqm !== null ? `${formatNumber(areaSqm)} sqm billable area` : 'Pricing is normalized to square meters.'}
+                {areaSqm !== null
+                  ? messages.materials.billableArea.replace('{value}', formatNumber(areaSqm))
+                  : messages.materials.normalizedPricing}
               </p>
             </div>
             <div className="material-summary-card total-card">
-              <span>Total price</span>
-              <strong>{totalPrice !== null ? formatPrice(totalPrice) : 'Select material and dimensions'}</strong>
-              <p>{selectedMaterial ? `${formatPrice(selectedMaterial.ratePerSqm)} per sqm` : 'Pricing unlocks after material selection.'}</p>
+              <span>{messages.materials.totalPrice}</span>
+              <strong>{totalPrice !== null ? formatPriceFromUsd(totalPrice) : messages.materials.selectMaterialAndDimensions}</strong>
+              <p>
+                {selectedMaterial
+                  ? `${formatPriceFromUsd(selectedMaterial.ratePerSqmUsd)} ${messages.materials.perSqm}`
+                  : messages.materials.pricingUnlocks}
+              </p>
             </div>
           </div>
         </div>
@@ -247,9 +244,9 @@ export default function PostPreviewMaterialSelection({
             className="material-select-btn"
             onClick={onAddToCart}
             disabled={!isReadyForCart}
-          >
-            <svg
-              className="material-select-btn-icon"
+            >
+              <svg
+                className="material-select-btn-icon"
               aria-hidden="true"
               viewBox="0 0 24 24"
               fill="none"
@@ -257,15 +254,15 @@ export default function PostPreviewMaterialSelection({
               strokeWidth="1.9"
               strokeLinecap="round"
               strokeLinejoin="round"
-            >
-              <circle cx="9" cy="19" r="1.7" />
-              <circle cx="18" cy="19" r="1.7" />
-              <path d="M3 5h2.2l2.1 9.4a1 1 0 0 0 .98.78h8.96a1 1 0 0 0 .97-.76L20.2 8H7.1" />
-            </svg>
-            <span>Add to Cart</span>
+              >
+                <circle cx="9" cy="19" r="1.7" />
+                <circle cx="18" cy="19" r="1.7" />
+                <path d="M3 5h2.2l2.1 9.4a1 1 0 0 0 .98.78h8.96a1 1 0 0 0 .97-.76L20.2 8H7.1" />
+              </svg>
+            <span>{messages.materials.addToCart}</span>
           </button>
           <p className="material-selection-footnote">
-            Estimates are shown in GBP and based on the selected wall area.
+            {messages.materials.footnote.replace('{currency}', currency)}
           </p>
           {cartNotice && <p className="material-selection-notice">{cartNotice}</p>}
         </div>

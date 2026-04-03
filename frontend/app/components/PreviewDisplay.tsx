@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import SharePreview from './SharePreview'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface PreviewDisplayProps {
   originalUrl: string
@@ -19,6 +20,7 @@ export default function PreviewDisplay({
   onClose,
   quality = '1k'
 }: PreviewDisplayProps) {
+  const { messages } = useLocalization()
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -173,10 +175,10 @@ export default function PreviewDisplay({
 
         {/* Labels */}
         <div className="absolute top-4 left-4 px-3 py-1 rounded text-sm font-medium compare-badge compare-badge-after">
-          After
+          {messages.preview.after}
         </div>
         <div className="absolute top-4 right-4 px-3 py-1 rounded text-sm font-medium compare-badge compare-badge-before">
-          Before
+          {messages.preview.before}
         </div>
       </div>
 
@@ -188,10 +190,10 @@ export default function PreviewDisplay({
           </svg>
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Drag the slider to compare before and after
+              {messages.preview.instructionTitle}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              Move the slider left and right to see how the wallpaper looks on your wall.
+              {messages.preview.instructionDetail}
             </p>
           </div>
         </div>
@@ -204,7 +206,7 @@ export default function PreviewDisplay({
             onClick={onClose}
             className="btn-secondary"
           >
-            Try Different Wallpaper
+            {messages.preview.tryDifferent}
           </button>
         )}
         <button
@@ -219,14 +221,14 @@ export default function PreviewDisplay({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
-              <span>Downloading...</span>
+              <span>{messages.preview.downloading}</span>
             </>
           ) : (
             <>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              <span>Download Preview</span>
+              <span>{messages.preview.downloadPreview}</span>
             </>
           )}
         </button>

@@ -2,6 +2,9 @@
 
 import { useRef, useState, type ChangeEvent } from 'react'
 import Image from 'next/image'
+import GenerationProgress from './GenerationProgress'
+import { interpolate } from '../lib/localization'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface GenerateWallpaperResult {
   success: boolean
@@ -39,11 +42,11 @@ interface CreateCustomDesignProps {
   onClearGenerationError: () => void
 }
 
-const STYLE_INSPIRATIONS = [
-  { name: 'Tropical Paradise' },
-  { name: 'Warm Minimal Texture' },
-  { name: 'Luxury Marble Pattern' },
-  { name: 'Organic Botanical' },
+const STYLE_INSPIRATION_KEYS = [
+  'Tropical Paradise',
+  'Warm Minimal Texture',
+  'Luxury Marble Pattern',
+  'Organic Botanical',
 ]
 
 export default function CreateCustomDesign({
@@ -54,6 +57,7 @@ export default function CreateCustomDesign({
   generationError,
   onClearGenerationError
 }: CreateCustomDesignProps) {
+  const { messages } = useLocalization()
   const [prompt, setPrompt] = useState('')
   const [selectedStyleInspirations, setSelectedStyleInspirations] = useState<string[]>([])
   const [reviewOptions, setReviewOptions] = useState<ReviewDesignOption[]>([])
@@ -110,18 +114,12 @@ export default function CreateCustomDesign({
           id: `${source}-${index + 1}`,
           url,
           source,
-          label: uploadedReference ? `Edited Option ${index + 1}` : `Option ${index + 1}`,
+          label: uploadedReference
+            ? interpolate(messages.create.editedOptionLabel, { index: index + 1 })
+            : interpolate(messages.create.optionLabel, { index: index + 1 }),
           helper: uploadedReference
-            ? index === 0
-              ? 'Closest to your uploaded design'
-              : index === 1
-                ? 'Refined variation with softer edits'
-                : 'More expressive reinterpretation'
-            : index === 0
-              ? 'Balanced luxury direction'
-              : index === 1
-                ? 'Calmer and softer variation'
-                : 'Bolder statement variation',
+            ? messages.create.editedOptionHelpers[index] || messages.create.editedOptionHelpers[0]
+            : messages.create.generatedOptionHelpers[index] || messages.create.generatedOptionHelpers[0],
         }
       })
 
@@ -153,7 +151,7 @@ export default function CreateCustomDesign({
       id: `uploaded-${Date.now()}`,
       url: uploadedReference.url,
       source: 'uploaded',
-      label: 'Uploaded Design',
+      label: messages.create.referenceKicker,
       helper: uploadedReference.fileName,
     }
 
@@ -176,12 +174,12 @@ export default function CreateCustomDesign({
     setUploadError(null)
 
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      setUploadError('Please upload a JPG or PNG wallpaper design.')
+      setUploadError(messages.create.uploadInvalidType)
       return
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Your design is too large. Please keep it under 10MB.')
+      setUploadError(messages.create.uploadTooLarge)
       return
     }
 
@@ -199,12 +197,12 @@ export default function CreateCustomDesign({
 
       const data = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(data?.detail || 'Failed to upload your wallpaper design.')
+        throw new Error(data?.detail || messages.create.uploadFailed)
       }
 
       const uploadedUrl = data?.url
       if (!uploadedUrl) {
-        throw new Error('Upload completed, but no design URL was returned.')
+        throw new Error(messages.create.uploadFailed)
       }
 
       setUploadedReference({
@@ -213,7 +211,7 @@ export default function CreateCustomDesign({
       })
       resetReviewState()
     } catch (error: any) {
-      setUploadError(error?.message || 'Failed to upload your wallpaper design.')
+      setUploadError(error?.message || messages.create.uploadFailed)
     } finally {
       setIsUploadingDesign(false)
     }
@@ -243,7 +241,7 @@ export default function CreateCustomDesign({
         <>
           <div>
             <label className="block text-sm font-semibold mb-2 luxury-label">
-              Describe your dream wallpaper
+              {messages.create.describeLabel}
             </label>
             <textarea
               value={prompt}
@@ -254,33 +252,34 @@ export default function CreateCustomDesign({
               }}
               placeholder={
                 uploadedReference
-                  ? 'Example: keep the wedding elements, but change the background into a soft natural botanical scene...'
-                  : 'Luxurious warm and elegant wallpaper with subtle texture...'
+                  ? messages.create.promptPlaceholderWithReference
+                  : messages.create.promptPlaceholder
               }
               rows={3}
               className="w-full luxury-textarea"
             />
             {uploadedReference && (
               <p className="custom-design-reference-hint">
-                Your prompt will transform the uploaded design below and create three edited wallpaper options.
+                {messages.create.promptHint}
               </p>
             )}
           </div>
 
           <div>
             <label className="block text-sm font-semibold mb-3 luxury-label">
-              Style inspiration (optional)
+              {messages.create.styleInspiration}
             </label>
             <div className="flex flex-wrap gap-2 filter-chip-row">
-              {STYLE_INSPIRATIONS.map((style) => {
-                const isSelected = selectedStyleInspirations.includes(style.name)
+              {STYLE_INSPIRATION_KEYS.map((styleKey, index) => {
+                const styleLabel = messages.create.styleOptions[index] || styleKey
+                const isSelected = selectedStyleInspirations.includes(styleKey)
                 return (
                   <button
-                    key={style.name}
-                    onClick={() => handleStyleInspirationClick(style.name)}
+                    key={styleKey}
+                    onClick={() => handleStyleInspirationClick(styleKey)}
                     className={`filter-chip ${isSelected ? 'is-selected' : ''}`}
                   >
-                    {style.name}
+                    {styleLabel}
                   </button>
                 )
               })}
@@ -289,9 +288,9 @@ export default function CreateCustomDesign({
 
           <div className="card custom-design-upload-card">
             <div className="custom-design-upload-copy">
-              <h4>Upload Your Own Wallpaper Design</h4>
+              <h4>{messages.create.uploadTitle}</h4>
               <p>
-                Upload your artwork as a base design, then use the prompt above to request edits and generate three refined wallpaper options.
+                {messages.create.uploadCopy}
               </p>
             </div>
 
@@ -315,15 +314,15 @@ export default function CreateCustomDesign({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Uploading Design...</span>
+                    <span>{messages.create.uploadingButton}</span>
                   </span>
                 ) : uploadedReference ? (
-                  'Replace Uploaded Design'
+                  messages.create.replaceButton
                 ) : (
-                  'Upload Wallpaper Design'
+                  messages.create.uploadButton
                 )}
               </button>
-              <p className="custom-design-upload-note">JPG or PNG, up to 10MB</p>
+              <p className="custom-design-upload-note">{messages.create.uploadNote}</p>
             </div>
           </div>
 
@@ -341,10 +340,10 @@ export default function CreateCustomDesign({
                 </div>
               </div>
               <div className="custom-design-reference-copy">
-                <span className="custom-design-reference-kicker">Uploaded Design Reference</span>
+                <span className="custom-design-reference-kicker">{messages.create.referenceKicker}</span>
                 <h4>{uploadedReference.fileName}</h4>
                 <p>
-                  Keep this as your source artwork and use the prompt to request changes like background swaps, softer palettes, or more natural motifs.
+                  {messages.create.referenceCopy}
                 </p>
                 <div className="custom-design-reference-actions">
                   <button
@@ -352,56 +351,35 @@ export default function CreateCustomDesign({
                     onClick={moveUploadedReferenceToReview}
                     className="luxury-secondary-btn custom-design-inline-action"
                   >
-                    Use Uploaded Design As-Is
+                    {messages.create.useAsIs}
                   </button>
                   <button
                     type="button"
                     onClick={handleRemoveUploadedDesign}
                     className="luxury-secondary-btn custom-design-inline-action is-muted"
                   >
-                    Remove Design
+                    {messages.create.removeDesign}
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="max-w-sm action-stack">
-            <button
-              onClick={handleGenerateClick}
-              disabled={isGenerating || !canGenerateVariants}
-              className="luxury-submit-btn"
-            >
-              {isGenerating ? (
-                <span className="flex items-center justify-center space-x-2">
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>
-                    {jobStatus === 'queued' && 'Queued for generation...'}
-                    {jobStatus === 'processing' && (uploadedReference ? 'Editing uploaded design into 3 options...' : 'Generating 3 wallpaper options...')}
-                    {!jobStatus && (uploadedReference ? 'Generating 3 Edited Variants...' : 'Generating Wallpaper Options...')}
-                  </span>
-                </span>
-              ) : uploadedReference ? (
-                'Generate 3 Variants From Uploaded Design'
-              ) : (
-                'Generate 3 Wallpaper Options'
-              )}
-            </button>
-          </div>
-
-          {isGenerating && jobStatus && (
-            <div className="text-center max-w-sm mx-auto">
-              <p className="text-sm inline-status">
-                {jobStatus === 'queued' && 'AI service is busy right now. Retrying automatically...'}
-                {jobStatus === 'processing' && (
-                  uploadedReference
-                    ? 'Reworking your uploaded design into three premium wallpaper directions...'
-                    : 'Creating three custom wallpaper directions for you...'
-                )}
-              </p>
+          {isGenerating ? (
+            <GenerationProgress
+              variant="wallpaper"
+              status={jobStatus}
+              className="custom-generation-progress"
+            />
+          ) : (
+            <div className="max-w-sm action-stack">
+              <button
+                onClick={handleGenerateClick}
+                disabled={!canGenerateVariants}
+                className="luxury-submit-btn"
+              >
+                {uploadedReference ? messages.create.generateUploaded : messages.create.generateGeneric}
+              </button>
             </div>
           )}
 
@@ -421,14 +399,14 @@ export default function CreateCustomDesign({
         <div className="space-y-6 generated-review-shell">
           <div className="text-center generated-review-header">
             <h4 className="text-lg font-semibold mb-2 generated-review-title">
-              {reviewOptions.length > 1 ? 'Choose Your Wallpaper Option' : 'Review Your Wallpaper Design'}
+              {reviewOptions.length > 1 ? messages.create.reviewTitleMultiple : messages.create.reviewTitleSingle}
             </h4>
             <p className="text-sm generated-review-copy">
               {reviewOptions.length > 1
                 ? isEditedReview
-                  ? 'We created three refined variations from your uploaded design. Pick the version that best fits your room before mapping it.'
-                  : 'We created three wallpaper directions for you. Pick the one that best fits your room before mapping it.'
-                : 'Your uploaded wallpaper is ready. Confirm it below, then map it onto your room.'}
+                  ? messages.create.reviewCopyEdited
+                  : messages.create.reviewCopyGenerated
+                : messages.create.reviewCopySingle}
             </p>
           </div>
 
@@ -460,7 +438,7 @@ export default function CreateCustomDesign({
                   <div className="generated-wallpaper-option-copy">
                     <span className="generated-wallpaper-option-label">{option.label}</span>
                     <strong>{option.helper}</strong>
-                    <p>{isSelected ? 'Selected for room preview' : 'Click to choose this design'}</p>
+                    <p>{isSelected ? messages.create.selectedForPreview : messages.create.clickToChoose}</p>
                   </div>
                 </button>
               )
@@ -468,30 +446,28 @@ export default function CreateCustomDesign({
           </div>
 
           <div className="space-y-3 max-w-sm mx-auto action-stack">
-            <button
-              onClick={handleApplyClick}
-              disabled={isApplying || !selectedOption}
-              className="luxury-submit-btn"
-            >
-              {isApplying ? (
-                <span className="flex items-center justify-center space-x-2">
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Applying to Room...</span>
-                </span>
-              ) : (
-                'Apply Selected Design'
-              )}
-            </button>
+            {isApplying ? (
+              <GenerationProgress
+                variant="mapping"
+                status={jobStatus}
+                className="custom-generation-progress"
+              />
+            ) : (
+              <button
+                onClick={handleApplyClick}
+                disabled={!selectedOption}
+                className="luxury-submit-btn"
+              >
+                {messages.create.applySelected}
+              </button>
+            )}
 
             <button
               onClick={resetReviewState}
               disabled={isApplying}
               className="luxury-secondary-btn"
             >
-              Choose Another Design
+              {messages.create.chooseAnother}
             </button>
           </div>
 
@@ -502,7 +478,7 @@ export default function CreateCustomDesign({
                 onClick={resetReviewState}
                 className="text-sm font-medium mt-2 luxury-inline-link"
               >
-                Try a different design
+                {messages.create.tryDifferent}
               </button>
             </div>
           )}

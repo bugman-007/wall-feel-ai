@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface CameraCaptureProps {
   onCapture: (file: File) => void
@@ -11,6 +12,7 @@ interface CameraCaptureProps {
 type FacingMode = 'environment' | 'user'
 
 export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
+  const { messages } = useLocalization()
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
@@ -82,17 +84,17 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
 
       setIsLoading(false)
       setError(err.name === 'NotAllowedError'
-        ? 'Camera access denied. Please allow camera permissions in your browser settings.'
+        ? messages.camera.permissionDenied
         : err.name === 'NotFoundError'
-        ? 'No camera found. Please connect a camera and try again.'
+        ? messages.camera.noCamera
         : err.name === 'NotReadableError'
-        ? 'Camera is busy. Please close other apps using the camera.'
+        ? messages.camera.busy
         : err.name === 'SecurityError'
-        ? 'Camera access requires HTTPS. Please use a secure connection.'
-        : 'Unable to access camera. Please make sure a camera is connected.')
+        ? messages.camera.httpsRequired
+        : messages.camera.unavailable)
       console.error('Camera error:', err)
     }
-  }, [stopStream])
+  }, [messages.camera.busy, messages.camera.httpsRequired, messages.camera.noCamera, messages.camera.permissionDenied, messages.camera.unavailable, stopStream])
 
   // Auto-start camera on mount
   useEffect(() => {
@@ -195,7 +197,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
     <div className="camera-capture-overlay" onClick={handleClose}>
       <div className="camera-capture-modal" onClick={(e) => e.stopPropagation()}>
         <div className="camera-header">
-          <h3>Capture Room Photo</h3>
+          <h3>{messages.camera.title}</h3>
           <button onClick={handleClose} className="camera-close-btn">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -211,7 +213,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                 {isLoading && (
                   <div className="camera-loading">
                     <div className="loading-spinner" />
-                    <p>Starting camera...</p>
+                    <p>{messages.camera.starting}</p>
                   </div>
                 )}
 
@@ -222,7 +224,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <p>Click to start camera</p>
+                    <p>{messages.camera.clickToStart}</p>
                   </div>
                 )}
 
@@ -246,7 +248,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                     </svg>
                     <p>{error}</p>
                     <button onClick={() => startCamera()} className="retry-btn">
-                      Try Again
+                      {messages.camera.tryAgain}
                     </button>
                   </div>
                 )}
@@ -261,7 +263,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                       <button
                         onClick={toggleTorch}
                         className={`control-btn ${torchOn ? 'active' : ''}`}
-                        title={torchOn ? 'Turn off flash' : 'Turn on flash'}
+                        title={torchOn ? messages.camera.turnOffFlash : messages.camera.turnOnFlash}
                       >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -271,7 +273,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                     <button
                       onClick={flipCamera}
                       className="control-btn"
-                      title="Flip camera"
+                      title={messages.camera.flipCamera}
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -305,7 +307,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Retake
+                  {messages.camera.retake}
                 </button>
               </div>
             </div>

@@ -1,14 +1,13 @@
 'use client'
 
-import Image from 'next/image'
 import { useState, useEffect } from 'react'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 interface StyleFeelFilterProps {
   selectedStyles: string[]
   selectedFeels: string[]
   onStyleSelect: (style: string) => void
   onFeelSelect: (feel: string) => void
-  onSurpriseMe: () => void
 }
 
 interface ClassificationLabels {
@@ -50,8 +49,8 @@ export default function StyleFeelFilter({
   selectedFeels,
   onStyleSelect,
   onFeelSelect,
-  onSurpriseMe,
 }: StyleFeelFilterProps) {
+  const { messages } = useLocalization()
   const [labels, setLabels] = useState<ClassificationLabels | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +81,7 @@ export default function StyleFeelFilter({
           return
         }
 
-        setError('Failed to load filters')
+        setError(messages.filter.failedToLoad)
         console.error('Labels fetch error:', err)
       } finally {
         if (isActive) {
@@ -96,15 +95,7 @@ export default function StyleFeelFilter({
     return () => {
       isActive = false
     }
-  }, [])
-
-  const handleStyleClick = (style: string) => {
-    if (style === 'Surprise me') {
-      onSurpriseMe()
-    } else {
-      onStyleSelect(style)
-    }
-  }
+  }, [messages.filter.failedToLoad])
 
   const isStyleSelected = (style: string) => selectedStyles.includes(style)
   const isFeelSelected = (feel: string) => selectedFeels.includes(feel)
@@ -134,7 +125,7 @@ export default function StyleFeelFilter({
       {/* Style Filter */}
       <div>
         <h4 className="text-sm font-semibold mb-3 filter-heading">
-          Choose Your Style
+          {messages.filter.chooseStyle}
         </h4>
         <div className="flex flex-wrap gap-2 filter-chip-row">
           {labels.styles.map((style) => {
@@ -142,34 +133,20 @@ export default function StyleFeelFilter({
             return (
               <button
                 key={style}
-                onClick={() => handleStyleClick(style)}
+                onClick={() => onStyleSelect(style)}
                 className={`filter-chip ${isSelected ? 'is-selected' : ''}`}
               >
                 {style}
               </button>
             )
           })}
-          {/* Surprise Me Button */}
-          <button
-            onClick={onSurpriseMe}
-            className="filter-chip surprise-chip"
-          >
-            <Image
-              src="/ui-icons/surprise-curation.png"
-              alt=""
-              width={18}
-              height={18}
-              className="surprise-chip-icon"
-            />
-            <span>Surprise me</span>
-          </button>
         </div>
       </div>
 
       {/* Feel Filter */}
       <div>
         <h4 className="text-sm font-semibold mb-3 filter-heading">
-          How should it feel?
+          {messages.filter.chooseFeel}
         </h4>
         <div className="flex flex-wrap gap-2 filter-chip-row">
           {labels.feels.map((feel) => {
@@ -198,7 +175,7 @@ export default function StyleFeelFilter({
             }}
             className="filter-clear"
           >
-            Clear all filters &mdash; Show all designs
+            {messages.filter.clearAll}
           </button>
         </div>
       )}

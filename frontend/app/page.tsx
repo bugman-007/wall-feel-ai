@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import ImageUpload from './components/ImageUpload'
+import GenerationProgress from './components/GenerationProgress'
 import {
   POST_PREVIEW_MATERIALS,
   SQFT_PER_SQM,
@@ -12,6 +13,24 @@ import {
   type PostPreviewMaterialId,
 } from './components/postPreviewMaterials'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { LocalizationProvider } from './contexts/LocalizationContext'
+import {
+  DEFAULT_CURRENCY,
+  DEFAULT_LOCALE,
+  SUPPORTED_CURRENCIES,
+  SUPPORTED_LOCALES,
+  convertUsdToCurrency,
+  detectSupportedLocale,
+  formatCurrencyValue,
+  getDefaultCurrencyForLocale,
+  getLocaleConfig,
+  getMessages,
+  interpolate,
+  isSupportedCurrency,
+  isSupportedLocale,
+  type SupportedCurrencyCode,
+  type SupportedLocaleCode,
+} from './lib/localization'
 
 interface WallpaperDesign {
   id: string
@@ -22,55 +41,25 @@ interface WallpaperDesign {
   description: string
 }
 
-const features = [
-  {
-    title: 'AI Upload & Preview',
-    description: 'Upload room photos and instantly map premium wallpaper concepts.',
-    icon: '/feature-icons/ai-upload-preview.png',
-  },
-  {
-    title: 'Smart Material Selection',
-    description: 'Compare peel-and-stick, classic, and premium finishes in real time.',
-    icon: '/feature-icons/smart-material-selection.png',
-  },
-  {
-    title: '3D Immersive Visualization',
-    description: 'See perspective-aware previews before committing to installation.',
-    icon: '/feature-icons/immersive-visualization.png',
-  },
-  {
-    title: 'Custom Design Request',
-    description: 'Work with our team to create tailored textures for unique spaces.',
-    icon: '/feature-icons/custom-design-request.png',
-  },
+const featureIcons = [
+  '/feature-icons/ai-upload-preview.png',
+  '/feature-icons/smart-material-selection.png',
+  '/feature-icons/immersive-visualization.png',
+  '/feature-icons/custom-design-request.png',
 ]
 
-const steps = [
-  {
-    title: 'Upload Your Space',
-    icon: '/process-icons/upload-your-space.png',
-  },
-  {
-    title: 'Choose Style & Material',
-    icon: '/process-icons/choose-style-material.png',
-  },
-  {
-    title: 'AI Generates Preview',
-    icon: '/process-icons/ai-generates-preview.png',
-  },
-  {
-    title: 'Order Your Design',
-    icon: '/process-icons/order-your-design.png',
-  },
+const processIcons = [
+  '/process-icons/upload-your-space.png',
+  '/process-icons/choose-style-material.png',
+  '/process-icons/ai-generates-preview.png',
+  '/process-icons/order-your-design.png',
 ]
 
-const formatPrice = (value: number) =>
-  new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+const STORAGE_KEYS = {
+  locale: 'wallfeel-locale',
+  currency: 'wallfeel-currency',
+  promptSeen: 'wallfeel-locale-prompt-seen',
+} as const
 
 function DeferredSectionFallback() {
   return (
@@ -103,7 +92,129 @@ const CreateCustomDesign = dynamic(() => import('./components/CreateCustomDesign
   loading: DeferredSectionFallback,
 })
 
+interface HeroSelectorOption {
+  value: string
+  label: string
+}
+
+interface HeroSelectorProps {
+  label: string
+  value: string
+  options: HeroSelectorOption[]
+  onChange: (value: string) => void
+}
+
+function HeroSelector({
+  label,
+  value,
+  options,
+  onChange,
+}: HeroSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const selectorRef = useRef<HTMLDivElement | null>(null)
+  const selectedOption = options.find((option) => option.value === value) || options[0]
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (selectorRef.current && !selectorRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  return (
+    <div
+      ref={selectorRef}
+      className={`hero-selector ${isOpen ? 'is-open' : ''}`}
+    >
+      <span className="hero-selector-label">{label}</span>
+      <button
+        type="button"
+        className="hero-selector-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span className="hero-selector-value">{selectedOption.label}</span>
+        <svg
+          className="hero-selector-chevron"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="hero-selector-menu" role="listbox" aria-label={label}>
+          {options.map((option) => {
+            const isSelected = option.value === value
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`hero-selector-option ${isSelected ? 'is-selected' : ''}`}
+                onClick={() => {
+                  onChange(option.value)
+                  setIsOpen(false)
+                }}
+              >
+                <span>{option.label}</span>
+                {isSelected && (
+                  <svg
+                    className="hero-selector-check"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Home() {
+  const [locale, setLocale] = useState<SupportedLocaleCode>(DEFAULT_LOCALE)
+  const [currency, setCurrency] = useState<SupportedCurrencyCode>(DEFAULT_CURRENCY)
+  const [showLocalePrompt, setShowLocalePrompt] = useState(false)
+  const [suggestedLocale, setSuggestedLocale] = useState<SupportedLocaleCode | null>(null)
+  const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false)
   const [selectedImage, setSelectedImage] = useState<{
     file: File
     preview: string
@@ -130,6 +241,8 @@ export default function Home() {
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const previewQuality = '1k' as const
+  const messages = getMessages(locale)
+  const suggestedLocaleConfig = suggestedLocale ? getLocaleConfig(suggestedLocale) : null
 
   // Refs for cleanup
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -138,6 +251,51 @@ export default function Home() {
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode)
+  }
+
+  const persistLocaleSettings = (nextLocale: SupportedLocaleCode, nextCurrency: SupportedCurrencyCode) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.localStorage.setItem(STORAGE_KEYS.locale, nextLocale)
+    window.localStorage.setItem(STORAGE_KEYS.currency, nextCurrency)
+    window.localStorage.setItem(STORAGE_KEYS.promptSeen, 'true')
+  }
+
+  const applyLocaleSelection = (nextLocale: SupportedLocaleCode) => {
+    const nextCurrency = getDefaultCurrencyForLocale(nextLocale)
+    setLocale(nextLocale)
+    setCurrency(nextCurrency)
+    setShowLocalePrompt(false)
+    persistLocaleSettings(nextLocale, nextCurrency)
+  }
+
+  const handleKeepEnglish = () => {
+    setLocale(DEFAULT_LOCALE)
+    setCurrency(DEFAULT_CURRENCY)
+    setShowLocalePrompt(false)
+    persistLocaleSettings(DEFAULT_LOCALE, DEFAULT_CURRENCY)
+  }
+
+  const handleManualLocaleChange = (value: string) => {
+    if (!isSupportedLocale(value)) {
+      return
+    }
+
+    applyLocaleSelection(value)
+  }
+
+  const handleManualCurrencyChange = (value: string) => {
+    if (!isSupportedCurrency(value)) {
+      return
+    }
+
+    setCurrency(value)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEYS.currency, value)
+      window.localStorage.setItem(STORAGE_KEYS.promptSeen, 'true')
+    }
   }
 
   const resetPostPreviewPurchase = () => {
@@ -162,26 +320,6 @@ export default function Home() {
         ? prev.filter(f => f !== feel)
         : [...prev, feel]
     )
-  }
-
-  const handleSurpriseMe = () => {
-    // Randomly select a style and feel to show variety
-    const allStyles = ['Minimal', 'Modern', 'Luxury', 'Organic', 'Bold', 'Classic', 'Playful', 'Commercial']
-    const allFeels = ['Calm', 'Warm', 'Statement', 'Elegant', 'Creative']
-
-    // Pick 1-2 random styles
-    const numStyles = Math.floor(Math.random() * 2) + 1
-    const shuffledStyles = allStyles.sort(() => 0.5 - Math.random())
-    const randomStyles = shuffledStyles.slice(0, numStyles)
-
-    // Pick 1 random feel
-    const randomFeel = allFeels[Math.floor(Math.random() * allFeels.length)]
-
-    setSelectedStyles(randomStyles)
-    setSelectedFeels([randomFeel])
-
-    // Scroll to wallpaper grid
-    document.getElementById('wallpaper-grid')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   const handleMaterialSelect = (materialId: PostPreviewMaterialId) => {
@@ -258,6 +396,45 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const storedLocale = window.localStorage.getItem(STORAGE_KEYS.locale)
+    const storedCurrency = window.localStorage.getItem(STORAGE_KEYS.currency)
+    const promptSeen = window.localStorage.getItem(STORAGE_KEYS.promptSeen) === 'true'
+
+    if (storedLocale && isSupportedLocale(storedLocale)) {
+      setLocale(storedLocale)
+      setCurrency(
+        storedCurrency && isSupportedCurrency(storedCurrency)
+          ? storedCurrency
+          : getDefaultCurrencyForLocale(storedLocale)
+      )
+      setHasLoadedPreferences(true)
+      return
+    }
+
+    if (storedCurrency && isSupportedCurrency(storedCurrency)) {
+      setCurrency(storedCurrency)
+    }
+
+    const detectedLocale = detectSupportedLocale(window.navigator.languages || [window.navigator.language])
+    if (detectedLocale && getLocaleConfig(detectedLocale).languageCode !== 'en') {
+      setSuggestedLocale(detectedLocale)
+      if (!promptSeen) {
+        setShowLocalePrompt(true)
+      }
+    }
+
+    if (promptSeen) {
+      window.localStorage.setItem(STORAGE_KEYS.promptSeen, 'true')
+    }
+
+    setHasLoadedPreferences(true)
+  }, [])
+
+  useEffect(() => {
     if (previewUrl) {
       resetPostPreviewPurchase()
     }
@@ -266,8 +443,9 @@ export default function Home() {
   useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
+      document.documentElement.lang = locale
     }
-  }, [isDarkMode])
+  }, [isDarkMode, locale])
 
   // Refetch catalog when filters change (only after initial load)
   useEffect(() => {
@@ -446,7 +624,7 @@ export default function Home() {
         ? areaDisplay / SQFT_PER_SQM
         : areaDisplay / SQIN_PER_SQM
   const totalPrice = selectedMaterial && areaSqm !== null
-    ? areaSqm * selectedMaterial.ratePerSqm
+    ? areaSqm * selectedMaterial.ratePerSqmUsd
     : null
   const isAddToCartEnabled = Boolean(selectedMaterial && areaSqm !== null && areaSqm > 0)
 
@@ -456,7 +634,10 @@ export default function Home() {
     }
 
     setCartNotice(
-      `Cart integration coming soon. ${selectedMaterial.name} is estimated at ${formatPrice(totalPrice)} for this wall.`
+      interpolate(messages.materials.cartNotice, {
+        material: messages.materials.materialMap[selectedMaterial.id]?.name || selectedMaterial.name,
+        price: formatCurrencyValue(convertUsdToCurrency(totalPrice, currency), locale, currency),
+      })
     )
   }
 
@@ -548,7 +729,7 @@ export default function Home() {
       if (err instanceof Error && err.name === 'AbortError') {
         return
       }
-      setCatalogError('Failed to load wallpaper designs')
+      setCatalogError(messages.wallpaperGrid.failedToLoad)
       console.error('Catalog fetch error:', err)
     } finally {
       if (catalogAbortRef.current === controller) {
@@ -626,26 +807,59 @@ export default function Home() {
   }
 
   // handleReset is available for future use when adding "Try Another" functionality
+  const localizedFeatures = messages.features.items.map((item, index) => ({
+    ...item,
+    icon: featureIcons[index],
+  }))
+  const localizedSteps = messages.process.items.map((item, index) => ({
+    ...item,
+    icon: processIcons[index],
+  }))
+  const activeFilterCount = selectedStyles.length + selectedFeels.length
+  const localeOptions = SUPPORTED_LOCALES.map((option) => ({
+    value: option.code,
+    label: option.nativeLabel,
+  }))
+  const currencyOptions = SUPPORTED_CURRENCIES.map((option) => ({
+    value: option.code,
+    label: option.label,
+  }))
 
   return (
+    <LocalizationProvider locale={locale} currency={currency}>
     <main className="luxury-page">
       <section className="hero-section">
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className="theme-toggle"
-          aria-label="Toggle dark mode"
-        >
-          {isDarkMode ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
-        </button>
+        <div className="hero-controls">
+          <HeroSelector
+            label={messages.selectors.language}
+            value={locale}
+            options={localeOptions}
+            onChange={handleManualLocaleChange}
+          />
+
+          <HeroSelector
+            label={messages.selectors.currency}
+            value={currency}
+            options={currencyOptions}
+            onChange={handleManualCurrencyChange}
+          />
+
+          <button
+            onClick={toggleTheme}
+            className="theme-toggle"
+            aria-label="Toggle dark mode"
+          >
+            {isDarkMode ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gold)' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         <div className="hero-image-layer" />
         <div className="hero-content">
@@ -656,20 +870,55 @@ export default function Home() {
               <span />
               <span />
             </span>
-            <span className="brand-mark">WALLFEEL</span>
+            <span className="brand-mark">WallFeel.</span>
           </div>
-          <h1>Transform Your Walls Into Luxury Experiences</h1>
-          <p className="hero-subtitle">AI-powered wall design. Upload. Visualize. Experience.</p>
+          <h1>{messages.hero.title}</h1>
+          <p className="hero-subtitle">{messages.hero.subtitle}</p>
           <div className="hero-actions">
-            <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>Start Designing</button>
+            <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>{messages.hero.startDesigning}</button>
           </div>
         </div>
+
+        {hasLoadedPreferences && showLocalePrompt && suggestedLocaleConfig && (
+          <div className="locale-prompt-backdrop">
+            <div className="locale-prompt-card">
+              <p className="locale-prompt-kicker">{messages.selectors.promptTitle}</p>
+              <h2>{suggestedLocaleConfig.nativeLabel}</h2>
+              <p>
+                {interpolate(messages.selectors.promptBody, {
+                  language: suggestedLocaleConfig.promptLabel,
+                  currency: suggestedLocaleConfig.defaultCurrency,
+                })}
+              </p>
+              <div className="locale-prompt-actions">
+                <button
+                  type="button"
+                  className="gold-btn"
+                  onClick={() => applyLocaleSelection(suggestedLocaleConfig.code)}
+                >
+                  {interpolate(messages.selectors.useLocal, {
+                    language: suggestedLocaleConfig.promptLabel,
+                    currency: suggestedLocaleConfig.defaultCurrency,
+                  })}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={handleKeepEnglish}
+                >
+                  {messages.selectors.keepEnglish}
+                </button>
+              </div>
+              <p className="locale-prompt-note">{messages.selectors.changeLater}</p>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="content-shell features-shell">
-        <h2 className="section-title">Our Key Features</h2>
+        <h2 className="section-title">{messages.features.title}</h2>
         <div className="feature-grid">
-          {features.map((item) => (
+          {localizedFeatures.map((item) => (
             <article key={item.title} className="feature-card">
               <div className="feature-card-head">
                 <div className="feature-card-icon" aria-hidden="true">
@@ -690,9 +939,9 @@ export default function Home() {
       </section>
 
       <section className="content-shell process-shell">
-        <h2 className="section-title">How It Works</h2>
+        <h2 className="section-title">{messages.process.title}</h2>
         <div className="steps-row">
-          {steps.map((step, index) => (
+          {localizedSteps.map((step, index) => (
             <div key={step.title} className="step-item">
               <div className="step-item-visual" aria-hidden="true">
                 <Image
@@ -712,15 +961,13 @@ export default function Home() {
 
       {/* AI Wallpaper Preview Generator - Integrated Section */}
       <section className="content-shell visualizer-shell" id="visualizer">
-        <h2 className="section-title">Visualize Your Space</h2>
-        <p className="section-subtitle">
-          Upload your room photo and refine a premium wall concept with a calmer, more editorial design review flow.
-        </p>
+        <h2 className="section-title">{messages.visualizer.title}</h2>
+        <p className="section-subtitle">{messages.visualizer.subtitle}</p>
 
         {/* Step 1: Upload - Always shown first */}
         <ErrorBoundary>
           <div className="step-section">
-            <h3 className="step-title">1. Upload Your Room Photo</h3>
+            <h3 className="step-title">{messages.visualizer.uploadStep}</h3>
             <ImageUpload onImageSelect={handleImageSelect} />
           </div>
         </ErrorBoundary>
@@ -735,13 +982,13 @@ export default function Home() {
                   onClick={() => setActiveTab('browse')}
                   className={`luxury-tab ${activeTab === 'browse' ? 'is-active' : ''}`}
                 >
-                  Browse Catalog
+                  {messages.visualizer.tabs.browse}
                 </button>
                 <button
                   onClick={() => setActiveTab('create')}
                   className={`luxury-tab ${activeTab === 'create' ? 'is-active' : ''}`}
                 >
-                  Create Your Own
+                  {messages.visualizer.tabs.create}
                 </button>
               </div>
             </ErrorBoundary>
@@ -754,22 +1001,24 @@ export default function Home() {
                   <div className="space-y-6">
                     {/* Style & Feel Filter */}
                     <div className="step-section">
-                      <h3 className="step-title">2. Choose Style & Feel</h3>
+                      <h3 className="step-title">{messages.visualizer.chooseStyleFeel}</h3>
                       <StyleFeelFilter
                       selectedStyles={selectedStyles}
                       selectedFeels={selectedFeels}
                       onStyleSelect={handleStyleSelect}
                       onFeelSelect={handleFeelSelect}
-                      onSurpriseMe={handleSurpriseMe}
                     />
                   </div>
 
                   {/* Wallpaper Grid */}
                   <div className="step-section" id="wallpaper-grid">
                     <h3 className="step-title">
-                      {selectedStyles.length > 0 || selectedFeels.length > 0
-                        ? `3. Choose from ${selectedStyles.length + selectedFeels.length} Filter${(selectedStyles.length + selectedFeels.length) > 1 ? 's' : ''}`
-                        : '3. Choose Your Wallpaper Design'}
+                      {activeFilterCount > 0
+                        ? interpolate(messages.visualizer.chooseWallpaperFiltered, {
+                          count: activeFilterCount,
+                          filterWord: activeFilterCount > 1 ? messages.common.filtersOther : messages.common.filtersOne,
+                        })
+                        : messages.visualizer.chooseWallpaper}
                     </h3>
                     <WallpaperGrid
                       onWallpaperSelect={handleWallpaperSelect}
@@ -786,32 +1035,25 @@ export default function Home() {
                   {/* Generate Preview Button */}
                   {selectedWallpaper && !previewUrl && (
                     <div className="step-section">
-                      <h3 className="step-title">4. Generate Preview</h3>
+                      <h3 className="step-title">{messages.visualizer.generatePreview}</h3>
                       <div className="card review-action-card">
                         <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-                          AI will automatically detect walls and apply the wallpaper
+                          {messages.visualizer.generatePreviewIntro}
                         </p>
                         <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
-                          Final previews are generated automatically in <strong style={{ color: 'var(--text-primary)' }}>1K</strong> for the fastest review flow.
+                          {messages.visualizer.generatePreviewResolution}
                         </p>
-                        <button
-                          onClick={handleGeneratePreview}
-                          disabled={isGenerating}
-                          className={`gold-btn ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          style={{ minWidth: '200px' }}
-                        >
-                          {isGenerating ? (
-                            <span className="flex items-center justify-center space-x-2">
-                              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              <span>Generating Preview...</span>
-                            </span>
-                          ) : (
-                            'Generate Preview with AI'
-                          )}
-                        </button>
+                        {isGenerating ? (
+                          <GenerationProgress variant="preview" className="review-generation-progress" />
+                        ) : (
+                          <button
+                            onClick={handleGeneratePreview}
+                            className="gold-btn"
+                            style={{ minWidth: '200px' }}
+                          >
+                            {messages.visualizer.generatePreviewButton}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -823,7 +1065,7 @@ export default function Home() {
               {activeTab === 'create' && (
                 <ErrorBoundary>
                   <div className="step-section">
-                    <h3 className="step-title">2. Create Your Custom Wallpaper</h3>
+                    <h3 className="step-title">{messages.visualizer.createStep}</h3>
                     <CreateCustomDesign
                       onGenerateWallpaper={handleGenerateWallpaper}
                       onApplyWallpaper={handleApplyWallpaper}
@@ -848,7 +1090,7 @@ export default function Home() {
               </svg>
               <div style={{ flex: 1 }}>
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  Preview Generation Failed
+                  {messages.visualizer.generationFailed}
                 </p>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {generateError}
@@ -858,7 +1100,7 @@ export default function Home() {
                   className="text-sm font-medium"
                   style={{ color: 'var(--gold)', marginTop: '12px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
                 >
-                  Try Again →
+                  {messages.common.tryAgain} →
                 </button>
               </div>
             </div>
@@ -869,7 +1111,7 @@ export default function Home() {
         {previewUrl && selectedImage?.preview && (
           <ErrorBoundary>
             <div className="step-section preview-stage">
-              <h3 className="step-title" style={{ textAlign: 'center' }}>Your Preview</h3>
+              <h3 className="step-title" style={{ textAlign: 'center' }}>{messages.visualizer.previewTitle}</h3>
               <PreviewDisplay
                 originalUrl={selectedImage.preview}
                 previewUrl={previewUrl}
@@ -930,22 +1172,23 @@ export default function Home() {
       </section> */}
 
       <section className="content-shell cta-shell luxury-cta-shell">
-        <h2 className="section-title">Ready to Redefine Your Space?</h2>
+        <h2 className="section-title">{messages.cta.title}</h2>
         <div className="hero-actions">
-          <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>Start Your Design</button>
-          <button className="ghost-btn">Talk to a Designer</button>
+          <button className="gold-btn" onClick={() => document.getElementById('visualizer')?.scrollIntoView({ behavior: 'smooth' })}>{messages.cta.start}</button>
+          <button className="ghost-btn">{messages.cta.talk}</button>
         </div>
       </section>
 
       <footer className="luxury-footer">
         <nav>
-          <span>About</span>
-          <span>Services</span>
-          <span>Projects</span>
-          <span>Contact</span>
+          <span>{messages.footer.about}</span>
+          <span>{messages.footer.services}</span>
+          <span>{messages.footer.projects}</span>
+          <span>{messages.footer.contact}</span>
         </nav>
         <p>© 2026 WallFeel</p>
       </footer>
     </main>
+    </LocalizationProvider>
   )
 }
