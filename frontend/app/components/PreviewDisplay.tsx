@@ -80,21 +80,6 @@ export default function PreviewDisplay({
     setSliderPosition(Math.max(0, Math.min(100, percentage)))
   }
 
-  
-  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null)
-
-  const handleOriginalLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { naturalWidth, naturalHeight } = e.currentTarget
-    const containerWidth = e.currentTarget.parentElement?.offsetWidth || 0
-    if (containerWidth > 0 && naturalWidth > 0) {
-      const scale = containerWidth / naturalWidth
-      setImageDimensions({
-        width: naturalWidth * scale,
-        height: naturalHeight * scale
-      })
-    }
-  }
-
   return (
     <div className="w-full max-w-6xl mx-auto preview-display-shell">
       {/* Comparison Container */}
@@ -109,38 +94,37 @@ export default function PreviewDisplay({
         onTouchEnd={handleMouseUp}
         style={{ minHeight: '500px' }}
       >
-        {/* Original Image (Background) */}
-        <div className="relative w-full h-[650px] pointer-events-none flex items-center justify-center">
-          <Image
-            src={originalUrl}
-            alt="Original room"
-            fill
-            className="object-contain"
-            unoptimized
-            draggable={false}
-            sizes="100vw"
-            onLoad={handleOriginalLoad}
-          />
-        </div>
+        <div className="comparison-viewport">
+          {/* Original Image (Background) */}
+          <div className="comparison-image-layer pointer-events-none">
+            <Image
+              src={originalUrl}
+              alt="Original room"
+              fill
+              className="comparison-image object-contain"
+              unoptimized
+              draggable={false}
+              sizes="100vw"
+            />
+          </div>
 
-        {/* Preview Image (Overlay with clip) */}
-        <div
-          className="absolute inset-0 pointer-events-none flex items-center justify-center"
-          style={{
-            clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
-          }}
-        >
-          {imageDimensions && (
+          {/* Preview Image (Overlay with clip) */}
+          <div
+            className="comparison-image-layer comparison-image-layer-overlay pointer-events-none"
+            style={{
+              clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
+            }}
+          >
             <Image
               src={previewUrl}
               alt="Preview with wallpaper"
-              width={imageDimensions.width}
-              height={imageDimensions.height}
-              className="object-contain"
+              fill
+              className="comparison-image object-contain"
               unoptimized
               draggable={false}
+              sizes="100vw"
             />
-          )}
+          </div>
         </div>
 
         {/* Slider Line */}
