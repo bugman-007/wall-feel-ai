@@ -22,6 +22,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Keep frontend app library modules tracked
+!frontend/app/lib/
+!frontend/app/lib/**
+
 # Virtual environments
 venv/
 env/
