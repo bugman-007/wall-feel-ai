@@ -249,6 +249,7 @@ export default function Home() {
 
   // Refs for cleanup
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const completionAnimationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const catalogAbortRef = useRef<AbortController | null>(null)
   const lastCatalogRequestKeyRef = useRef<string | null>(null)
   const activeBrowsePreviewJobRef = useRef<string | null>(null)
@@ -384,6 +385,22 @@ export default function Home() {
     }
   }
 
+  const cleanupCompletionAnimation = () => {
+    if (completionAnimationTimeoutRef.current) {
+      clearTimeout(completionAnimationTimeoutRef.current)
+      completionAnimationTimeoutRef.current = null
+    }
+  }
+
+  const runCompletedAnimation = (onComplete: () => void) => {
+    cleanupCompletionAnimation()
+    setJobStatus('completed')
+    completionAnimationTimeoutRef.current = setTimeout(() => {
+      completionAnimationTimeoutRef.current = null
+      onComplete()
+    }, 350)
+  }
+
   const cancelActiveBrowsePreview = async () => {
     const jobId = activeBrowsePreviewJobRef.current
     if (!jobId) {
@@ -392,8 +409,10 @@ export default function Home() {
 
     activeBrowsePreviewJobRef.current = null
     cleanupPolling()
+    cleanupCompletionAnimation()
     setIsGenerating(false)
     setGenerateError(null)
+    setJobStatus(null)
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -409,6 +428,7 @@ export default function Home() {
   useEffect(() => {
     return () => {
       cleanupPolling()
+      cleanupCompletionAnimation()
       void cancelActiveBrowsePreview()
       const activeCatalogRequest = catalogAbortRef.current
       catalogAbortRef.current = null
@@ -496,6 +516,7 @@ export default function Home() {
     }
 
     setIsGeneratingCustom(true)
+    cleanupCompletionAnimation()
     setGenerateError(null)
     setCustomGenerateError(null)
     setJobStatus('queued')
@@ -525,19 +546,21 @@ export default function Home() {
             pollJobStatus(
               data.job_id,
               (result) => {
-                setIsGeneratingCustom(false)
-                setJobStatus('completed')
-                const wallpaperUrls = result.result?.wallpaper_urls || (result.result?.wallpaper_url ? [result.result.wallpaper_url] : [])
-                if (wallpaperUrls.length > 0) {
-                  setCustomGenerateError(null)
-                  resolve({ success: true, wallpaperUrls })
-                } else {
-                  const error = 'No wallpaper options were returned'
-                  setCustomGenerateError(error)
-                  resolve({ success: false, error })
-                }
+                runCompletedAnimation(() => {
+                  setIsGeneratingCustom(false)
+                  const wallpaperUrls = result.result?.wallpaper_urls || (result.result?.wallpaper_url ? [result.result.wallpaper_url] : [])
+                  if (wallpaperUrls.length > 0) {
+                    setCustomGenerateError(null)
+                    resolve({ success: true, wallpaperUrls })
+                  } else {
+                    const error = 'No wallpaper options were returned'
+                    setCustomGenerateError(error)
+                    resolve({ success: false, error })
+                  }
+                })
               },
               (error) => {
+                cleanupCompletionAnimation()
                 setIsGeneratingCustom(false)
                 setJobStatus('failed')
                 setCustomGenerateError(error)
@@ -545,6 +568,7 @@ export default function Home() {
               }
             )
           } else {
+            cleanupCompletionAnimation()
             setIsGeneratingCustom(false)
             setJobStatus('failed')
             const error = 'Failed to create job'
@@ -554,6 +578,7 @@ export default function Home() {
         })
         .catch(err => {
           console.error('Job creation error:', err)
+          cleanupCompletionAnimation()
           setIsGeneratingCustom(false)
           setJobStatus('failed')
           const error = 'Failed to create job'
@@ -569,6 +594,7 @@ export default function Home() {
     }
 
     setIsGeneratingCustom(true)
+    cleanupCompletionAnimation()
     setGenerateError(null)
     setJobStatus('queued')
 
@@ -595,22 +621,25 @@ export default function Home() {
             pollJobStatus(
               data.job_id,
               (result) => {
-                setIsGeneratingCustom(false)
-                setJobStatus('completed')
-                if (result.result?.preview_url) {
-                  setPreviewUrl(result.result.preview_url)
-                  resolve({ success: true, previewUrl: result.result.preview_url })
-                } else {
-                  resolve({ success: false, error: 'No preview URL in result' })
-                }
+                runCompletedAnimation(() => {
+                  setIsGeneratingCustom(false)
+                  if (result.result?.preview_url) {
+                    setPreviewUrl(result.result.preview_url)
+                    resolve({ success: true, previewUrl: result.result.preview_url })
+                  } else {
+                    resolve({ success: false, error: 'No preview URL in result' })
+                  }
+                })
               },
               (error) => {
+                cleanupCompletionAnimation()
                 setIsGeneratingCustom(false)
                 setJobStatus('failed')
                 resolve({ success: false, error })
               }
             )
           } else {
+            cleanupCompletionAnimation()
             setIsGeneratingCustom(false)
             setJobStatus('failed')
             resolve({ success: false, error: 'Failed to create job' })
@@ -618,6 +647,7 @@ export default function Home() {
         })
         .catch(err => {
           console.error('Job creation error:', err)
+          cleanupCompletionAnimation()
           setIsGeneratingCustom(false)
           setJobStatus('failed')
           resolve({ success: false, error: 'Failed to create job' })
@@ -805,6 +835,8 @@ export default function Home() {
     }
 
     setIsGenerating(true)
+    cleanupCompletionAnimation()
+    setJobStatus('queued')
     setGenerateError(null)
 
     try {
@@ -845,13 +877,15 @@ export default function Home() {
 
           activeBrowsePreviewJobRef.current = null
           cleanupPolling()
-          setIsGenerating(false)
+          runCompletedAnimation(() => {
+            setIsGenerating(false)
 
-          if (result.result?.preview_url) {
-            setPreviewUrl(result.result.preview_url)
-          } else {
-            setGenerateError('Preview generation failed. Please try again.')
-          }
+            if (result.result?.preview_url) {
+              setPreviewUrl(result.result.preview_url)
+            } else {
+              setGenerateError('Preview generation failed. Please try again.')
+            }
+          })
         },
         (error) => {
           if (activeBrowsePreviewJobRef.current !== currentJobId) {
@@ -860,7 +894,9 @@ export default function Home() {
 
           activeBrowsePreviewJobRef.current = null
           cleanupPolling()
+          cleanupCompletionAnimation()
           setIsGenerating(false)
+          setJobStatus('failed')
           setGenerateError(error || 'Preview generation failed. Please try again.')
         },
         () => {
@@ -870,7 +906,9 @@ export default function Home() {
 
           activeBrowsePreviewJobRef.current = null
           cleanupPolling()
+          cleanupCompletionAnimation()
           setIsGenerating(false)
+          setJobStatus(null)
         }
       )
 
@@ -882,7 +920,9 @@ export default function Home() {
         userMessage = 'Cannot connect to server. Please check your internet connection.'
       }
 
+      cleanupCompletionAnimation()
       setIsGenerating(false)
+      setJobStatus('failed')
       setGenerateError(userMessage)
       console.error('Generation error:', err)
     }
@@ -1131,7 +1171,11 @@ export default function Home() {
                           {messages.visualizer.generatePreviewResolution}
                         </p>
                         {isGenerating ? (
-                          <GenerationProgress variant="preview" className="review-generation-progress" />
+                          <GenerationProgress
+                            variant="preview"
+                            status={jobStatus}
+                            className="review-generation-progress"
+                          />
                         ) : (
                           <button
                             onClick={handleGeneratePreview}

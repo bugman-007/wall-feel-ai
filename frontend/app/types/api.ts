@@ -211,6 +211,7 @@ export interface WallpaperTextureSuccessResponse {
   model: string
   timing: {
     generation_time: number
+    generation_compute_time?: number
     upload_time: number
     total_time: number
   }

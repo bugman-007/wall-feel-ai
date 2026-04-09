@@ -66,6 +66,10 @@ QUALITY_DIMENSIONS = {
     '8k': 7680,  # Upscale mode: generate at 4k, upscale to 8k
 }
 
+# Resize all model inputs to keep Gemini image requests fast and consistent.
+MODEL_INPUT_MAX_DIMENSION = 1536
+TEXTURE_VARIATION_PARALLELISM = 3
+
 
 class LRUCache:
     """Simple LRU cache with max size and TTL support."""
@@ -196,6 +200,30 @@ def _extract_generated_image(response) -> Optional[bytes]:
     return None
 
 
+def _build_image_generation_config():
+    """
+    Build a Gemini image-generation config with AFC fully disabled.
+
+    The google-genai SDK can enable Automatic Function Calling by default,
+    which causes slow image requests and repeated remote-call attempts on
+    image-preview models. We explicitly disable it for every image request.
+    """
+    from google.genai import types
+
+    return types.GenerateContentConfig(
+        response_modalities=['IMAGE'],
+        tools=[],
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+            disable=True,
+        ),
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(
+                mode=types.FunctionCallingConfigMode.NONE,
+            )
+        ),
+    )
+
+
 def _resize_and_correct_image(
     image_bytes: bytes,
     target_width: int,
@@ -241,6 +269,65 @@ def _resize_and_correct_image(
     output.seek(0)
 
     return output.getvalue()
+
+
+def _prepare_model_image(
+    image_bytes: bytes,
+    mime_type: Optional[str] = None,
+    max_dimension: int = MODEL_INPUT_MAX_DIMENSION,
+) -> tuple[bytes, str, Tuple[int, int]]:
+    """
+    Normalize model input images and downscale large payloads before upload.
+
+    Returns:
+        Tuple of (prepared_bytes, prepared_mime_type, original_dimensions)
+    """
+    from PIL import Image, ImageOps
+
+    detected_mime = mime_type or _detect_mime_type(image_bytes)
+
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
+        original_dimensions = img.size
+        longest_side = max(img.size)
+
+        if longest_side <= max_dimension and detected_mime in {'image/jpeg', 'image/png', 'image/webp'}:
+            return image_bytes, detected_mime, original_dimensions
+
+        scale = min(1.0, max_dimension / float(longest_side))
+        target_width = max(1, int(round(img.width * scale)))
+        target_height = max(1, int(round(img.height * scale)))
+
+        if scale < 1.0:
+            img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+        output = io.BytesIO()
+
+        if detected_mime == 'image/png':
+            output_format = 'PNG'
+            output_mime = 'image/png'
+            img.save(output, format=output_format, optimize=True)
+        elif detected_mime == 'image/webp':
+            output_format = 'WEBP'
+            output_mime = 'image/webp'
+            img.save(output, format=output_format, quality=85, method=6)
+        else:
+            output_format = 'JPEG'
+            output_mime = 'image/jpeg'
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            img.save(output, format=output_format, quality=85, optimize=True)
+
+    prepared_bytes = output.getvalue()
+    logger.info(
+        "Prepared model input image: %sx%s -> %sx%s (%s)",
+        original_dimensions[0],
+        original_dimensions[1],
+        target_width,
+        target_height,
+        output_mime,
+    )
+    return prepared_bytes, output_mime, original_dimensions
 
 
 def generate_wallpaper_preview_gemini(
@@ -336,19 +423,23 @@ def generate_wallpaper_preview_gemini(
         wallpaper_mime_type = _detect_mime_type(wallpaper_image_bytes)
         # Use provided MIME type if available, otherwise use detected
         actual_room_mime = room_mime_type or detected_room_mime
-        logger.info(f"Room image MIME: {actual_room_mime}, Wallpaper MIME: {wallpaper_mime_type}")
 
-        # Get original image dimensions for aspect ratio preservation
-        from PIL import Image as PILImage
-        room_img = PILImage.open(io.BytesIO(room_image_bytes))
-        original_width, original_height = room_img.size
+        room_model_bytes, room_model_mime, (original_width, original_height) = _prepare_model_image(
+            room_image_bytes,
+            mime_type=actual_room_mime,
+        )
+        wallpaper_model_bytes, wallpaper_model_mime, _ = _prepare_model_image(
+            wallpaper_image_bytes,
+            mime_type=wallpaper_mime_type,
+        )
+        logger.info(f"Room image MIME: {room_model_mime}, Wallpaper MIME: {wallpaper_model_mime}")
         logger.info(f"Original image dimensions: {original_width}x{original_height}")
 
         # Create Image objects with correct MIME types
-        room_image = types.Part.from_bytes(data=room_image_bytes, mime_type=actual_room_mime)
-        wallpaper_image = types.Part.from_bytes(data=wallpaper_image_bytes, mime_type=wallpaper_mime_type)
+        room_image = types.Part.from_bytes(data=room_model_bytes, mime_type=room_model_mime)
+        wallpaper_image = types.Part.from_bytes(data=wallpaper_model_bytes, mime_type=wallpaper_model_mime)
 
-        # Generate preview with AFC disabled
+        # Generate preview with AFC fully disabled to avoid SDK AFC loops.
         generation_start = time.time()
         logger.info(f"Generating preview with Gemini 3.1 Flash Image (quality: {quality.upper()})...")
 
@@ -358,8 +449,7 @@ def generate_wallpaper_preview_gemini(
         gemini_size = GEMINI_IMAGE_SIZES.get(native_quality, '1K')
 
         # Generate preview
-        # Note: Native image_size config not available in current SDK version; we handle resize locally
-        # Note: AFC is disabled by default for image generation models
+        # Note: Native image_size config is handled locally in this service.
         response = client.models.generate_content(
             model='gemini-3.1-flash-image-preview',
             contents=[
@@ -367,9 +457,7 @@ def generate_wallpaper_preview_gemini(
                 room_image,
                 wallpaper_image
             ],
-            config=types.GenerateContentConfig(
-                response_modalities=['IMAGE']
-            )
+            config=_build_image_generation_config()
         )
 
         generation_elapsed = time.time() - generation_start
@@ -548,9 +636,13 @@ def _generate_texture_bytes(
 
     if reference_image_bytes is not None:
         actual_reference_mime = reference_image_mime_type or _detect_mime_type(reference_image_bytes)
+        reference_model_bytes, reference_model_mime, _ = _prepare_model_image(
+            reference_image_bytes,
+            mime_type=actual_reference_mime,
+        )
         reference_image = types.Part.from_bytes(
-            data=reference_image_bytes,
-            mime_type=actual_reference_mime
+            data=reference_model_bytes,
+            mime_type=reference_model_mime
         )
         contents = [
             enhanced_prompt,
@@ -573,9 +665,7 @@ def _generate_texture_bytes(
     texture_response = client.models.generate_content(
         model=model_name,
         contents=contents,
-        config=types.GenerateContentConfig(
-            response_modalities=['IMAGE'],
-        )
+        config=_build_image_generation_config()
     )
 
     generation_elapsed = time.time() - generation_start
@@ -587,6 +677,28 @@ def _generate_texture_bytes(
         return None, generation_elapsed
 
     return wallpaper_bytes, generation_elapsed
+
+
+def _generate_texture_variation(
+    api_key: str,
+    variation_index: int,
+    variant_prompt: str,
+    model_name: str = 'gemini-2.5-flash-image',
+    reference_image_bytes: Optional[bytes] = None,
+    reference_image_mime_type: Optional[str] = None,
+) -> tuple[int, Optional[bytes], float]:
+    """Generate one wallpaper variation in an isolated worker."""
+    from google import genai
+
+    client = genai.Client(api_key=api_key)
+    wallpaper_bytes, generation_elapsed = _generate_texture_bytes(
+        client,
+        variant_prompt,
+        model_name=model_name,
+        reference_image_bytes=reference_image_bytes,
+        reference_image_mime_type=reference_image_mime_type,
+    )
+    return variation_index, wallpaper_bytes, generation_elapsed
 
 
 def generate_wallpaper_texture(
@@ -609,7 +721,7 @@ def generate_wallpaper_texture(
         Dict with wallpaper_url and timing
     """
     try:
-        from google import genai
+        import concurrent.futures
         from r2_client import r2_client
         import uuid
 
@@ -618,7 +730,6 @@ def generate_wallpaper_texture(
             logger.error("Gemini API key not configured")
             return None
 
-        client = genai.Client(api_key=api_key)
         start_time = time.time()
 
         reference_image_bytes: Optional[bytes] = None
@@ -674,23 +785,55 @@ def generate_wallpaper_texture(
         public_urls: list[str] = []
         generation_elapsed_total = 0.0
         upload_elapsed_total = 0.0
+        variation_results: Dict[int, tuple[Optional[bytes], float]] = {}
 
-        for variation_index, variation_brief in enumerate(variation_briefs, start=1):
-            variant_prompt = (
-                f"{enhanced_prompt}\n\n"
-                f"Variation {variation_index} of {len(variation_briefs)}. "
-                f"{variation_brief}"
+        variation_inputs = [
+            (
+                variation_index,
+                (
+                    f"{enhanced_prompt}\n\n"
+                    f"Variation {variation_index} of {len(variation_briefs)}. "
+                    f"{variation_brief}"
+                ),
             )
+            for variation_index, variation_brief in enumerate(variation_briefs, start=1)
+        ]
 
-            wallpaper_bytes, generation_elapsed = _generate_texture_bytes(
-                client,
-                variant_prompt,
-                model_name=texture_model,
-                reference_image_bytes=reference_image_bytes,
-                reference_image_mime_type=reference_image_mime_type,
-            )
-            generation_elapsed_total += generation_elapsed
+        parallel_generation_start = time.time()
+        max_workers = min(TEXTURE_VARIATION_PARALLELISM, len(variation_inputs))
 
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(
+                    _generate_texture_variation,
+                    api_key,
+                    variation_index,
+                    variant_prompt,
+                    texture_model,
+                    reference_image_bytes,
+                    reference_image_mime_type,
+                ): variation_index
+                for variation_index, variant_prompt in variation_inputs
+            }
+
+            for future in concurrent.futures.as_completed(future_to_index):
+                variation_index = future_to_index[future]
+                try:
+                    _, wallpaper_bytes, generation_elapsed = future.result()
+                    generation_elapsed_total += generation_elapsed
+                    variation_results[variation_index] = (wallpaper_bytes, generation_elapsed)
+                except Exception as exc:
+                    logger.warning(
+                        "Wallpaper texture variation %s failed during parallel generation: %s",
+                        variation_index,
+                        exc,
+                        exc_info=True,
+                    )
+
+        parallel_generation_elapsed = time.time() - parallel_generation_start
+
+        for variation_index, _ in variation_inputs:
+            wallpaper_bytes, _ = variation_results.get(variation_index, (None, 0.0))
             if not wallpaper_bytes:
                 logger.warning(f"Wallpaper texture variation {variation_index} did not return a valid image")
                 continue
@@ -728,7 +871,8 @@ def generate_wallpaper_texture(
             "provider": "google",
             "model": texture_model,
             "timing": {
-                "generation_time": round(generation_elapsed_total, 2),
+                "generation_time": round(parallel_generation_elapsed, 2),
+                "generation_compute_time": round(generation_elapsed_total, 2),
                 "upload_time": round(upload_elapsed_total, 2),
                 "total_time": round(total_elapsed, 2)
             }
@@ -823,8 +967,6 @@ def generate_custom_wallpaper_ai(
         from google.genai import types
         from r2_client import r2_client
         import uuid
-        import io
-        from PIL import Image as PILImage
 
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -854,13 +996,13 @@ def generate_custom_wallpaper_ai(
                 _cache_room_image(image_url, room_image_bytes)
             download_elapsed = time.time() - download_start
 
-        # Detect MIME type
+        # Detect MIME type and prepare a smaller model input payload.
         detected_room_mime = _detect_mime_type(room_image_bytes)
         actual_room_mime = room_mime_type or detected_room_mime
-
-        # Get original dimensions for aspect ratio
-        room_img = PILImage.open(io.BytesIO(room_image_bytes))
-        original_width, original_height = room_img.size
+        room_model_bytes, room_model_mime, (original_width, original_height) = _prepare_model_image(
+            room_image_bytes,
+            mime_type=actual_room_mime,
+        )
 
         # ========== STEP 1: Generate wallpaper texture using Gemini 2.5 Flash ==========
         logger.info("Step 1: Generating wallpaper texture with Gemini 2.5 Flash (fast)...")
@@ -873,14 +1015,18 @@ def generate_custom_wallpaper_ai(
 
         # Create wallpaper image object
         wallpaper_mime = _detect_mime_type(wallpaper_bytes)
-        wallpaper_image = types.Part.from_bytes(data=wallpaper_bytes, mime_type=wallpaper_mime)
+        wallpaper_model_bytes, wallpaper_model_mime, _ = _prepare_model_image(
+            wallpaper_bytes,
+            mime_type=wallpaper_mime,
+        )
+        wallpaper_image = types.Part.from_bytes(data=wallpaper_model_bytes, mime_type=wallpaper_model_mime)
 
         # ========== STEP 2: Apply wallpaper to room using Gemini 3.1 Flash Image ==========
         logger.info("Step 2: Applying wallpaper to room with Gemini 3.1 Flash Image...")
         apply_generation_start = time.time()
 
         # Create room image object
-        room_image = types.Part.from_bytes(data=room_image_bytes, mime_type=actual_room_mime)
+        room_image = types.Part.from_bytes(data=room_model_bytes, mime_type=room_model_mime)
 
         # Apply wallpaper to room using shared Gemini call logic
         apply_response = client.models.generate_content(
@@ -890,9 +1036,7 @@ def generate_custom_wallpaper_ai(
                 room_image,
                 wallpaper_image
             ],
-            config=types.GenerateContentConfig(
-                response_modalities=['IMAGE']
-            )
+            config=_build_image_generation_config()
         )
 
         apply_generation_elapsed = time.time() - apply_generation_start
